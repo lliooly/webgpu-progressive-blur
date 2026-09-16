@@ -1,10 +1,25 @@
 {
   "name": "webgpu-progressive-blur",
   "version": "0.1.1",
-  "private": true,
+  "private": false,
   "description": "WebGPU progressive blur for blog navigation, inspired by Inferno.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lliooly/webgpu-progressive-blur.git"
+  },
+  "bugs": {
+    "url": "https://github.com/lliooly/webgpu-progressive-blur/issues"
+  },
+  "homepage": "https://github.com/lliooly/webgpu-progressive-blur#readme",
+  "keywords": [
+    "webgpu",
+    "progressive-blur",
+    "gaussian-blur",
+    "typescript",
+    "wgsl"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
