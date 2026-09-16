@@ -1,4 +1,13 @@
-import { variableBlurWgsl } from '../shaders/variable-blur.wgsl.js';
+import {
+  createBlurPipeline,
+  createBlurShaderModule,
+  encodeBlurPass,
+} from './blur-pass.js';
+import {
+  BLUR_UNIFORM_BYTE_SIZE,
+  MAX_SAMPLES,
+  createBlurUniformValues,
+} from './blur-params.js';
 import {
   ProgressiveBlurError,
   requestWebGPUDevice,
@@ -14,7 +23,6 @@ import type {
   ProgressiveBlurRenderer as ProgressiveBlurRendererContract,
 } from './types.js';
 
-const MAX_SAMPLES = 64;
 const DEFAULT_RADIUS = 16;
 const DEFAULT_MAX_SAMPLES = 15;
 const DEFAULT_GRADIENT: Required<BlurGradient> = {
@@ -125,7 +133,7 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
   private readonly outputFormat: GPUTextureFormat;
   private readonly sampler: GPUSampler;
   private readonly maskSampler: GPUSampler;
-  private readonly uniformBuffer: GPUBuffer;
+  private readonly uniformBuffers: [GPUBuffer, GPUBuffer];
   private readonly intermediatePipeline: GPURenderPipeline;
   private readonly outputPipeline: GPURenderPipeline;
   private readonly adapter?: GPUAdapter;
@@ -159,9 +167,9 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     this.source = options.source;
     this.mask = options.mask;
 
-    const shaderModule = device.createShaderModule({ code: variableBlurWgsl });
-    this.intermediatePipeline = this.createPipeline(shaderModule, 'rgba16float');
-    this.outputPipeline = this.createPipeline(shaderModule, outputFormat);
+    const shaderModule = createBlurShaderModule(device);
+    this.intermediatePipeline = createBlurPipeline(device, 'rgba16float', shaderModule);
+    this.outputPipeline = createBlurPipeline(device, outputFormat, shaderModule);
     this.sampler = device.createSampler({
       addressModeU: 'clamp-to-edge',
       addressModeV: 'clamp-to-edge',
@@ -174,10 +182,16 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
       magFilter: 'linear',
       minFilter: 'linear',
     });
-    this.uniformBuffer = device.createBuffer({
-      size: 48,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
+    this.uniformBuffers = [
+      device.createBuffer({
+        size: BLUR_UNIFORM_BYTE_SIZE,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      }),
+      device.createBuffer({
+        size: BLUR_UNIFORM_BYTE_SIZE,
+        usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      }),
+    ];
 
     this.resize(
       readCssDimension(canvas, 'width'),
@@ -332,6 +346,7 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
       this.intermediatePipeline,
       firstAxis,
       maskTexture,
+      this.uniformBuffers[0],
     );
     this.renderPass(
       commandEncoder,
@@ -340,6 +355,7 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
       this.outputPipeline,
       secondAxis,
       maskTexture,
+      this.uniformBuffers[1],
     );
 
     this.device.queue.submit([commandEncoder.finish()]);
@@ -351,26 +367,11 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     this.destroyTexture(this.sourceUploadTexture);
     this.destroyTexture(this.maskUploadTexture);
     this.destroyTexture(this.defaultMaskTexture);
-    this.uniformBuffer.destroy();
+    this.uniformBuffers[0].destroy();
+    this.uniformBuffers[1].destroy();
     this._status = { supported: true, state: 'destroyed' };
     this.source = undefined;
     this.mask = undefined;
-  }
-
-  private createPipeline(shaderModule: GPUShaderModule, format: GPUTextureFormat): GPURenderPipeline {
-    return this.device.createRenderPipeline({
-      layout: 'auto',
-      vertex: {
-        module: shaderModule,
-        entryPoint: 'vertexMain',
-      },
-      fragment: {
-        module: shaderModule,
-        entryPoint: 'fragmentMain',
-        targets: [{ format }],
-      },
-      primitive: { topology: 'triangle-list' },
-    });
   }
 
   private renderPass(
@@ -380,48 +381,26 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     pipeline: GPURenderPipeline,
     axis: number,
     maskTexture: GPUTexture,
+    uniformBuffer: GPUBuffer,
   ): void {
-    const values = new Float32Array([
-      this._width,
-      this._height,
-      1 / this._width,
-      1 / this._height,
-      this._parameters.radius * 3 * this._pixelRatio,
-      this._parameters.maxSamples,
-      axis,
-      this._parameters.mode === 'navbar' ? 1 : 0,
-      this._parameters.gradient.start,
-      this._parameters.gradient.end,
-      this._parameters.gradient.direction === 'bottom-to-top' ? 1 : 0,
-      this._parameters.normalizeEdges ? 1 : 0,
-    ]);
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, values);
-
-    const bindGroup = this.device.createBindGroup({
-      layout: pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: sourceTexture.createView() },
-        { binding: 1, resource: this.sampler },
-        { binding: 2, resource: { buffer: this.uniformBuffer } },
-        { binding: 3, resource: maskTexture.createView() },
-        { binding: 4, resource: this.maskSampler },
-      ],
+    encodeBlurPass({
+      device: this.device,
+      commandEncoder,
+      sourceTexture,
+      targetView,
+      pipeline,
+      maskTexture,
+      sampler: this.sampler,
+      maskSampler: this.maskSampler,
+      uniformBuffer,
+      uniformValues: createBlurUniformValues({
+        width: this._width,
+        height: this._height,
+        pixelRatio: this._pixelRatio,
+        axis,
+        parameters: this._parameters,
+      }),
     });
-
-    const pass = commandEncoder.beginRenderPass({
-      colorAttachments: [
-        {
-          view: targetView,
-          clearValue: { r: 0, g: 0, b: 0, a: 0 },
-          loadOp: 'clear',
-          storeOp: 'store',
-        },
-      ],
-    });
-    pass.setPipeline(pipeline);
-    pass.setBindGroup(0, bindGroup);
-    pass.draw(3);
-    pass.end();
   }
 
   private resolveSourceTexture(source: BlurSource): GPUTexture {

@@ -1,11 +1,13 @@
 /**
  * Separable variable Gaussian blur.
  *
- * The public API expresses radius as sigma. The renderer passes the equivalent
- * 3-sigma support radius to this shader, matching Inferno's Metal shader.
+ * The public API expresses radius as Gaussian sigma. The renderer passes the
+ * equivalent 3-sigma support radius to this shader, matching Inferno's Metal
+ * implementation.
  */
 export const variableBlurWgsl = /* wgsl */ `
 const MAX_SAMPLES: u32 = 64u;
+const PI: f32 = 3.141592653589793;
 
 struct BlurParams {
   size: vec2<f32>,
@@ -22,7 +24,6 @@ struct BlurParams {
 
 struct VertexOutput {
   @builtin(position) position: vec4<f32>,
-  @location(0) uv: vec2<f32>,
 };
 
 @group(0) @binding(0) var sourceTexture: texture_2d<f32>;
@@ -38,24 +39,45 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     vec2<f32>(3.0, -1.0),
     vec2<f32>(-1.0, 3.0),
   );
-  let position = positions[vertexIndex];
 
   var output: VertexOutput;
-  output.position = vec4<f32>(position, 0.0, 1.0);
-  output.uv = vec2<f32>(position.x * 0.5 + 0.5, 0.5 - position.y * 0.5);
+  output.position = vec4<f32>(positions[vertexIndex], 0.0, 1.0);
   return output;
+}
+
+fn pixelPositionToUv(pixelPosition: vec2<f32>) -> vec2<f32> {
+  return pixelPosition * params.texelSize;
+}
+
+fn inBoundingRect(pixelPosition: vec2<f32>) -> bool {
+  return pixelPosition.x >= 0.0 &&
+    pixelPosition.x <= params.size.x &&
+    pixelPosition.y >= 0.0 &&
+    pixelPosition.y <= params.size.y;
+}
+
+// SwiftUI's Layer can be sampled outside its own layer. The WebGPU equivalent
+// is a transparent layer exterior; normalizeEdges decides whether that sample
+// is rejected or contributes transparent weight.
+fn sampleSourceAtPixel(pixelPosition: vec2<f32>) -> vec4<f32> {
+  if (!inBoundingRect(pixelPosition)) {
+    return vec4<f32>(0.0);
+  }
+  return textureSampleLevel(
+    sourceTexture,
+    sourceSampler,
+    pixelPositionToUv(pixelPosition),
+    0.0,
+  );
 }
 
 fn gaussian(distance: f32, sigma: f32) -> f32 {
   let safeSigma = max(sigma, 0.0001);
-  return exp(-(distance * distance) / (2.0 * safeSigma * safeSigma));
+  let exponent = -(distance * distance) / (2.0 * safeSigma * safeSigma);
+  return (1.0 / (2.0 * PI * safeSigma * safeSigma)) * exp(exponent);
 }
 
-fn inBounds(uv: vec2<f32>) -> bool {
-  return uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0;
-}
-
-fn blurStrength(uv: vec2<f32>) -> f32 {
+fn maskStrength(uv: vec2<f32>) -> f32 {
   if (params.mode < 0.5) {
     return textureSampleLevel(maskTexture, maskSampler, uv, 0.0).a;
   }
@@ -68,45 +90,55 @@ fn blurStrength(uv: vec2<f32>) -> f32 {
   return progress;
 }
 
+fn blur1D(position: vec2<f32>, radius: f32, axis: vec2<f32>) -> vec4<f32> {
+  let interval = max(1.0, radius / max(params.maxSamples, 1.0));
+  let sigma = radius / 3.0;
+  let centerWeight = gaussian(0.0, sigma);
+  var weightedColor = sampleSourceAtPixel(position) * centerWeight;
+  var totalWeight = centerWeight;
+
+  if (interval <= radius) {
+    for (var index: u32 = 1u; index <= MAX_SAMPLES; index = index + 1u) {
+      let distance = f32(index) * interval;
+      if (distance > radius) {
+        break;
+      }
+
+      let weight = gaussian(distance, sigma);
+      let offset = axis * distance;
+      let positivePosition = position + offset;
+      let negativePosition = position - offset;
+
+      if (params.normalizeEdges < 0.5 || inBoundingRect(positivePosition)) {
+        weightedColor = weightedColor + sampleSourceAtPixel(positivePosition) * weight;
+        totalWeight = totalWeight + weight;
+      }
+      if (params.normalizeEdges < 0.5 || inBoundingRect(negativePosition)) {
+        weightedColor = weightedColor + sampleSourceAtPixel(negativePosition) * weight;
+        totalWeight = totalWeight + weight;
+      }
+    }
+  }
+
+  return weightedColor / max(totalWeight, 0.0001);
+}
+
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
-  let strength = clamp(blurStrength(input.uv), 0.0, 1.0);
+  let pixelPosition = input.position.xy;
+  let uv = pixelPositionToUv(pixelPosition);
+  let strength = clamp(maskStrength(uv), 0.0, 1.0);
   let radius = strength * params.supportRadius;
 
   if (radius < 1.0) {
-    let sourceColor = textureSampleLevel(sourceTexture, sourceSampler, input.uv, 0.0);
-    return sourceColor;
+    return sampleSourceAtPixel(pixelPosition);
   }
 
-  let sigma = radius / 3.0;
-  let centerWeight = gaussian(0.0, sigma);
-  var weightedColor = textureSampleLevel(sourceTexture, sourceSampler, input.uv, 0.0) * centerWeight;
-  var totalWeight = centerWeight;
-  let interval = max(1.0, radius / max(params.maxSamples, 1.0));
-  let axis = select(vec2<f32>(1.0, 0.0), vec2<f32>(0.0, 1.0), params.axis >= 0.5);
-
-  for (var index: u32 = 1u; index <= MAX_SAMPLES; index = index + 1u) {
-    let distance = f32(index) * interval;
-    if (distance > radius) {
-      break;
-    }
-
-    let weight = gaussian(distance, sigma);
-    let offset = axis * distance * params.texelSize;
-    let positiveUv = input.uv + offset;
-    let negativeUv = input.uv - offset;
-
-    if (params.normalizeEdges < 0.5 || inBounds(positiveUv)) {
-      weightedColor = weightedColor + textureSampleLevel(sourceTexture, sourceSampler, positiveUv, 0.0) * weight;
-      totalWeight = totalWeight + weight;
-    }
-    if (params.normalizeEdges < 0.5 || inBounds(negativeUv)) {
-      weightedColor = weightedColor + textureSampleLevel(sourceTexture, sourceSampler, negativeUv, 0.0) * weight;
-      totalWeight = totalWeight + weight;
-    }
-  }
-
-  let blurredColor = weightedColor / max(totalWeight, 0.0001);
-  return blurredColor;
+  let axis = select(
+    vec2<f32>(1.0, 0.0),
+    vec2<f32>(0.0, 1.0),
+    params.axis >= 0.5,
+  );
+  return blur1D(pixelPosition, radius, axis);
 }
 `;
