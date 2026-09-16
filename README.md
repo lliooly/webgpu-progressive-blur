@@ -60,6 +60,7 @@ blur.destroy();
 - 中间纹理使用 `rgba16float`，避免两遍之间量化到 8 位。
 - WGSL 使用最多 64 个方向样本并在运行时提前退出；采样间隔遵循 Inferno 的 `max(1, supportRadius / maxSamples)`。
 - Alpha mask 和有效边缘样本重新归一化；零半径或小于一个物理像素时直接返回原像素。
+- 对 `HTMLCanvasElement` / `OffscreenCanvas` 源优先使用带行对齐的 `queue.writeTexture`，保留 DOM 快照的 Alpha；其他外部图像继续走 `copyExternalImageToTexture`。
 - 导航栏模式只沿 Y 改变半径，默认先做纵向 pass，再做横向 pass，避免横向 pass 读取不同半径行的中间结果。
 - 不支持 WebGPU 时展示页保留清晰的底色并报告 fallback 状态，不伪装为成功渲染。
 

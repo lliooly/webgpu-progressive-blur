@@ -77,7 +77,6 @@ describe('WGSL source', () => {
     expect(variableBlurWgsl).toContain('const MAX_SAMPLES: u32 = 64u');
     expect(variableBlurWgsl).toContain('textureSampleLevel(maskTexture');
     expect(variableBlurWgsl).toContain('params.normalizeEdges');
-    expect(variableBlurWgsl).toContain('return weightedColor / max(totalWeight');
+    expect(variableBlurWgsl).toContain('let blurredColor = weightedColor / max(totalWeight');
   });
 });
-

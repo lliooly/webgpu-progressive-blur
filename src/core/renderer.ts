@@ -107,6 +107,16 @@ function getCanvasContext(canvas: CanvasTarget): GPUCanvasContext {
   return context;
 }
 
+type Canvas2DSource = {
+  getContext: (contextId: '2d') => CanvasRenderingContext2D | null;
+};
+
+function getCanvas2DSource(source: BlurSource): Canvas2DSource | undefined {
+  if (typeof source !== 'object' || source === null) return undefined;
+  const candidate = source as Partial<Canvas2DSource>;
+  return typeof candidate.getContext === 'function' ? candidate as Canvas2DSource : undefined;
+}
+
 export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract {
   readonly canvas: CanvasTarget;
 
@@ -419,9 +429,12 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     if (!this.sourceUploadTexture) {
       throw new Error('The source upload texture has not been initialized.');
     }
+    if (this.uploadCanvasPixels(source, this.sourceUploadTexture)) {
+      return this.sourceUploadTexture;
+    }
     this.device.queue.copyExternalImageToTexture(
-      { source },
-      { texture: this.sourceUploadTexture },
+      { source, flipY: false },
+      { texture: this.sourceUploadTexture, premultipliedAlpha: false },
       { width: this._width, height: this._height },
     );
     return this.sourceUploadTexture;
@@ -433,12 +446,44 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     if (!this.maskUploadTexture) {
       throw new Error('The mask upload texture has not been initialized.');
     }
+    if (this.uploadCanvasPixels(mask, this.maskUploadTexture)) {
+      return this.maskUploadTexture;
+    }
     this.device.queue.copyExternalImageToTexture(
-      { source: mask },
-      { texture: this.maskUploadTexture },
+      { source: mask, flipY: false },
+      { texture: this.maskUploadTexture, premultipliedAlpha: false },
       { width: this._width, height: this._height },
     );
     return this.maskUploadTexture;
+  }
+
+  private uploadCanvasPixels(source: BlurSource, texture: GPUTexture): boolean {
+    const canvasSource = getCanvas2DSource(source);
+    if (!canvasSource) return false;
+    const context = canvasSource.getContext('2d');
+    if (!context) return false;
+
+    // Canvas-to-texture copies can lose the source alpha in Chrome. Reading a
+    // 2D canvas keeps opaque DOM snapshots opaque; other external sources use
+    // the zero-copy copyExternalImageToTexture path below.
+    const imageData = context.getImageData(0, 0, this._width, this._height).data;
+    const rowBytes = this._width * 4;
+    const bytesPerRow = Math.ceil(rowBytes / 256) * 256;
+    const upload = new Uint8Array(bytesPerRow * this._height);
+    if (bytesPerRow === rowBytes) {
+      upload.set(imageData);
+    } else {
+      for (let row = 0; row < this._height; row += 1) {
+        upload.set(imageData.subarray(row * rowBytes, (row + 1) * rowBytes), row * bytesPerRow);
+      }
+    }
+    this.device.queue.writeTexture(
+      { texture },
+      upload,
+      { bytesPerRow, rowsPerImage: this._height },
+      { width: this._width, height: this._height },
+    );
+    return true;
   }
 
   private getDefaultMaskTexture(): GPUTexture {

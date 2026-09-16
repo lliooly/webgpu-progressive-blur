@@ -74,7 +74,8 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let radius = strength * params.supportRadius;
 
   if (radius < 1.0) {
-    return textureSampleLevel(sourceTexture, sourceSampler, input.uv, 0.0);
+    let sourceColor = textureSampleLevel(sourceTexture, sourceSampler, input.uv, 0.0);
+    return sourceColor;
   }
 
   let sigma = radius / 3.0;
@@ -105,7 +106,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     }
   }
 
-  return weightedColor / max(totalWeight, 0.0001);
+  let blurredColor = weightedColor / max(totalWeight, 0.0001);
+  return blurredColor;
 }
 `;
-
