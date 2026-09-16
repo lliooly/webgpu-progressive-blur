@@ -1,5 +1,6 @@
 import { createBlurPipeline, createBlurShaderModule, encodeBlurPass } from '../../src/core/blur-pass';
 import { createBlurUniformValues } from '../../src/core/blur-params';
+import { createProgressiveBlur } from '../../src/core/renderer';
 import {
   createGradientMask,
   progressiveBlurReference,
@@ -428,6 +429,68 @@ async function runCase(device: GPUDevice, testCase: GpuCase): Promise<GpuCaseRes
   };
 }
 
+// Exercise the public renderer as well as the shared pass encoder: two passes
+// accidentally sharing one uniform buffer produce a horizontal streak here.
+async function runRendererCase(device: GPUDevice, pixelRatio: number): Promise<GpuCaseResult> {
+  const cssWidth = 53;
+  const cssHeight = 37;
+  const width = cssWidth * pixelRatio;
+  const height = cssHeight * pixelRatio;
+  const source = quantizeSource(makeSource(width, height));
+  const sourceCanvas = new OffscreenCanvas(width, height);
+  const sourceContext = sourceCanvas.getContext('2d')!;
+  const input = sourceContext.createImageData(width, height);
+  input.data.set(rgbaBytes(source));
+  sourceContext.putImageData(input, 0, 0);
+  const outputCanvas = new OffscreenCanvas(cssWidth, cssHeight);
+  const renderer = await createProgressiveBlur({
+    canvas: outputCanvas,
+    source: sourceCanvas,
+    device,
+    mode: 'navbar',
+    radius: 3,
+    pixelRatio,
+    maxSamples: 15,
+    verticalPassFirst: true,
+    gradient: { start: 0, end: 1 },
+  });
+  const readback = new OffscreenCanvas(width, height).getContext('2d')!;
+  let maxAbsoluteError = 0;
+  let sumAbsoluteError = 0;
+  let finite = true;
+  // Zero radius checks exact scaling/coordinates; nonzero checks both axes.
+  for (const radius of [0, 3]) {
+    renderer.setParameters({ radius });
+    renderer.render();
+    await device.queue.onSubmittedWorkDone();
+    readback.drawImage(outputCanvas, 0, 0);
+    const actual = readback.getImageData(0, 0, width, height).data;
+    const expected = progressiveBlurReference(source, width, height, {
+      radius: radius * pixelRatio,
+      maxSamples: 15,
+      verticalPassFirst: true,
+      gradient: { start: 0, end: 1 },
+    });
+    for (let index = 0; index < actual.length; index += 1) {
+      const error = Math.abs(actual[index] / 255 - expected[index]);
+      finite &&= Number.isFinite(error);
+      maxAbsoluteError = Math.max(maxAbsoluteError, error);
+      sumAbsoluteError += error;
+    }
+  }
+  renderer.destroy();
+  const meanAbsoluteError = sumAbsoluteError / (source.length * 2);
+  return {
+    name: `production-renderer-dpr-${pixelRatio}`,
+    width,
+    height,
+    maxAbsoluteError,
+    meanAbsoluteError,
+    finite,
+    passed: finite && maxAbsoluteError < 0.005 && meanAbsoluteError < 0.0015,
+  };
+}
+
 export async function runGpuValidation(): Promise<GpuValidationReport> {
   if (!navigator.gpu) {
     return {
@@ -452,6 +515,9 @@ export async function runGpuValidation(): Promise<GpuValidationReport> {
   try {
     for (const testCase of makeCases()) {
       results.push(await runCase(device, testCase));
+    }
+    for (const pixelRatio of [1, 2]) {
+      results.push(await runRendererCase(device, pixelRatio));
     }
     const validationError = await device.popErrorScope();
     if (validationError) {
