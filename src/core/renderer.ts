@@ -1,8 +1,8 @@
-import { variableBlurWgsl } from '../shaders/variable-blur.wgsl';
+import { variableBlurWgsl } from '../shaders/variable-blur.wgsl.js';
 import {
   ProgressiveBlurError,
   requestWebGPUDevice,
-} from './device';
+} from './device.js';
 import type {
   BlurGradient,
   BlurMode,
@@ -12,7 +12,7 @@ import type {
   CanvasTarget,
   ProgressiveBlurOptions,
   ProgressiveBlurRenderer as ProgressiveBlurRendererContract,
-} from './types';
+} from './types.js';
 
 const MAX_SAMPLES = 64;
 const DEFAULT_RADIUS = 16;
@@ -30,9 +30,14 @@ function clamp(value: number, min: number, max: number): number {
 function normalizeGradient(gradient?: BlurGradient): Required<BlurGradient> {
   const start = clamp(gradient?.start ?? DEFAULT_GRADIENT.start, 0, 1);
   const end = clamp(gradient?.end ?? DEFAULT_GRADIENT.end, 0, 1);
+  const safeEnd = Math.abs(end - start) < 0.0001
+    ? start >= 1
+      ? Math.max(0, start - 0.0001)
+      : Math.min(1, start + 0.0001)
+    : end;
   return {
     start,
-    end: Math.abs(end - start) < 0.0001 ? Math.min(1, start + 0.0001) : end,
+    end: safeEnd,
     direction: gradient?.direction ?? DEFAULT_GRADIENT.direction,
   };
 }
@@ -141,6 +146,8 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     this.outputFormat = outputFormat;
     this.adapter = adapter;
     this._parameters = normalizeParameters(options);
+    this.source = options.source;
+    this.mask = options.mask;
 
     const shaderModule = device.createShaderModule({ code: variableBlurWgsl });
     this.intermediatePipeline = this.createPipeline(shaderModule, 'rgba16float');
@@ -300,7 +307,10 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     }
 
     const sourceTexture = this.resolveSourceTexture(this.source);
-    const maskTexture = this.resolveMaskTexture(this.mask);
+    const maskTexture =
+      this._parameters.mode === 'reference'
+        ? this.resolveMaskTexture(this.mask)
+        : this.getDefaultMaskTexture();
     const commandEncoder = this.device.createCommandEncoder({ label: 'progressive-blur' });
     const firstAxis = this._parameters.verticalPassFirst ? 1 : 0;
     const secondAxis = this._parameters.verticalPassFirst ? 0 : 1;

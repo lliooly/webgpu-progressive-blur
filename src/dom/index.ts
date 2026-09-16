@@ -1,4 +1,4 @@
-export { ProgressiveBlurDomAdapter } from './adapter';
+export { ProgressiveBlurDomAdapter } from './adapter.js';
 export type {
   DomAdapterState,
   DomAdapterStatus,
@@ -7,4 +7,4 @@ export type {
   DomCaptureRequest,
   DomRefreshReason,
   DomScrollMetrics,
-} from './adapter';
+} from './adapter.js';

@@ -1,7 +1,7 @@
 import type {
   BlurSource,
   ProgressiveBlurRenderer,
-} from '../core/types';
+} from '../core/types.js';
 
 export type DomRefreshReason = 'initial' | 'manual' | 'resize' | 'theme';
 
@@ -200,4 +200,3 @@ export class ProgressiveBlurDomAdapter {
     }
   }
 }
-

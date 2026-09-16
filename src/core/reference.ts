@@ -1,4 +1,4 @@
-import type { BlurGradient } from './types';
+import type { BlurGradient } from './types.js';
 
 export interface ReferenceBlurOptions {
   /** Gaussian sigma in source pixels. The support radius is sigma * 3. */
@@ -170,11 +170,20 @@ export function progressiveBlurReference(
   }
 
   const gradient: Required<BlurGradient> | undefined = options.gradient
-    ? {
-        start: clamp(options.gradient.start ?? 0, 0, 1),
-        end: clamp(options.gradient.end ?? 1, 0, 1),
-        direction: options.gradient.direction ?? 'top-to-bottom',
-      }
+    ? (() => {
+        const start = clamp(options.gradient.start ?? 0, 0, 1);
+        const end = clamp(options.gradient.end ?? 1, 0, 1);
+        return {
+          start,
+          end:
+            Math.abs(end - start) < 0.0001
+              ? start >= 1
+                ? Math.max(0, start - 0.0001)
+                : Math.min(1, start + 0.0001)
+              : end,
+          direction: options.gradient.direction ?? 'top-to-bottom',
+        };
+      })()
     : undefined;
   const supportRadius = options.radius * 3;
   const firstAxis = options.verticalPassFirst ? 'vertical' : 'horizontal';
@@ -222,4 +231,3 @@ export function createGradientMask(
   }
   return mask;
 }
-

@@ -1,13 +1,13 @@
-export { ProgressiveBlurRenderer, createProgressiveBlur } from './core/renderer';
+export { ProgressiveBlurRenderer, createProgressiveBlur } from './core/renderer.js';
 export {
   getWebGPUCapability,
   ProgressiveBlurError,
   requestWebGPUDevice,
-} from './core/device';
+} from './core/device.js';
 export {
   createGradientMask,
   progressiveBlurReference,
-} from './core/reference';
+} from './core/reference.js';
 export type {
   BlurGradient,
   BlurMode,
@@ -19,4 +19,4 @@ export type {
   ProgressiveBlurOptions,
   ProgressiveBlurRenderer as ProgressiveBlurRendererContract,
   WebGPUCapability,
-} from './core/types';
+} from './core/types.js';

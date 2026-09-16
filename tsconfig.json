@@ -3,6 +3,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "paths": {
+      "@webgpu-progressive-blur": ["./src/index.ts"],
+      "@webgpu-progressive-blur/dom": ["./src/dom/index.ts"]
+    },
     "strict": true,
     "skipLibCheck": true,
     "isolatedModules": true,

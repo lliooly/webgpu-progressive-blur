@@ -1,4 +1,4 @@
-import type { WebGPUCapability } from './types';
+import type { WebGPUCapability } from './types.js';
 
 export type ProgressiveBlurErrorCode =
   | 'webgpu-unavailable'
@@ -76,4 +76,3 @@ export async function requestWebGPUDevice(
     );
   }
 }
-
