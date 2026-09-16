@@ -10,7 +10,11 @@ Referenced blur shader and Swift wrappers: Dale Price. Project copyright: Paul H
 
 Historical origin: https://github.com/daprice/Variablur
 
-The files in references/inferno are unmodified reference copies. WebGPU adaptation has not been implemented yet; its changes will be documented here when added.
+The files in references/inferno are unmodified reference copies. The WebGPU
+adaptation in `src/core` and `src/shaders` is a TypeScript/WGSL rewrite that
+preserves the algorithmic behavior described above while making the texture,
+coordinate, precision, and lifecycle decisions explicit for WebGPU. It does
+not copy the SwiftUI wrappers or Metal source into the distributed runtime.
 
 ### Original upstream license and notices
 
@@ -89,4 +93,3 @@ Based on: https://www.shadertoy.com/view/flyfRt
 Original author: altaha-ansari
 Metal port: twodayslate
 License: MIT
-

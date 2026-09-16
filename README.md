@@ -1,12 +1,12 @@
 # WebGPU Progressive Blur
 
-为个人博客导航栏开发的 WebGPU 渐进模糊 npm 库。参考 Inferno 的 Swift/Metal 实现，用 TypeScript 和 WGSL 重写。
+面向博客顶部导航栏的 WebGPU 渐进模糊 npm 库。参考 Inferno 的 Swift/Metal 实现，用 TypeScript 和 WGSL 重写，提供参考 Alpha mask 模式和导航栏纵向渐变模式。
 
 ## 当前状态
 
-项目准备阶段。已整理设计、参考源码和许可证，尚未实现 WGSL、构建流程或 DOM 捕获。当前不能作为可运行的模糊库使用。
+核心库、CPU 参考计算、DOM 生命周期适配器和可运行展示页已实现。Chrome 的 WebGPU 运行态验证已通过：固定导航栏会随着滚动更新源纹理，渲染采用纵向和横向两遍分离采样。
 
-`webgpu-progressive-blur` 是本地暂定名称，未核验 npm 名称可用性；`private: true` 防止准备阶段误发布。未安装依赖，未初始化 Git，未创建远程仓库。
+`webgpu-progressive-blur` 仍是本地暂定名称，`private: true` 保留以避免误发布。真实博客仓库路径尚未提供，因此 `/dom` 使用调用者提供的 capture provider，不把某个 DOM 截图库冒充为已验证的博客集成方案。
 
 ## 文档
 
@@ -14,6 +14,54 @@
 - [工作清单](docs/roadmap.md)
 - [参考源码导读](references/inferno/README.md)
 - [第三方许可与致谢](THIRD_PARTY_NOTICES.md)
+
+## 开发
+
+```bash
+npm install
+npm test
+npm run typecheck
+npm run build
+npm run dev
+```
+
+`npm run dev` 会启动 `examples/navbar` 展示页。页面右下角的 live instrument 可以切换模式、半径、采样数量、渐变范围、pass 顺序和边界归一化。
+
+## 核心 API
+
+模块导入阶段不会访问 `window`、`document` 或 `navigator`；在客户端显式创建 renderer：
+
+```ts
+import { createProgressiveBlur } from 'webgpu-progressive-blur';
+
+const blur = await createProgressiveBlur({
+  canvas: outputCanvas,
+  source: backgroundCanvas,
+  mode: 'navbar',
+  radius: 16,
+  maxSamples: 15,
+  verticalPassFirst: true,
+  normalizeEdges: true,
+  gradient: { start: 0, end: 1, direction: 'top-to-bottom' },
+});
+
+blur.render();
+blur.setParameters({ radius: 22 });
+blur.resize(cssWidth, cssHeight, devicePixelRatio);
+blur.destroy();
+```
+
+`radius` 的公开语义是 Gaussian sigma，shader 内部使用 `3 × radius` 的支持范围。`reference` 模式读取 mask 的 Alpha；`navbar` 模式直接解析纵向渐变，不需要上传 mask，因此滚动时只更新源纹理。
+
+`webgpu-progressive-blur/dom` 导出 `ProgressiveBlurDomAdapter`。适配器负责字体等待、缓存、resize/theme refresh、滚动同步、错误状态和销毁；DOM 快照由调用者提供，以便博客可以选择适合自身图片、字体和跨域策略的捕获实现。
+
+## 实现取舍
+
+- 中间纹理使用 `rgba16float`，避免两遍之间量化到 8 位。
+- WGSL 使用最多 64 个方向样本并在运行时提前退出；采样间隔遵循 Inferno 的 `max(1, supportRadius / maxSamples)`。
+- Alpha mask 和有效边缘样本重新归一化；零半径或小于一个物理像素时直接返回原像素。
+- 导航栏模式只沿 Y 改变半径，默认先做纵向 pass，再做横向 pass，避免横向 pass 读取不同半径行的中间结果。
+- 不支持 WebGPU 时展示页保留清晰的底色并报告 fallback 状态，不伪装为成功渲染。
 
 ## 目录
 

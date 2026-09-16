@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#101219" />
+    <title>Progressive Blur / WebGPU Field Notes</title>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-nav" id="site-nav">
+        <canvas class="blur-output" id="blur-output" aria-hidden="true"></canvas>
+        <div class="nav-wash" aria-hidden="true"></div>
+        <div class="nav-inner">
+          <a class="wordmark" href="#top" aria-label="Progressive blur home">
+            <span class="wordmark-mark">◎</span>
+            <span>field / blur</span>
+          </a>
+          <nav class="nav-links" aria-label="Primary navigation">
+            <a class="active" href="#method">Method</a>
+            <a href="#signals">Signals</a>
+            <a href="#notes">Notes</a>
+          </nav>
+          <span class="nav-index">01—04</span>
+        </div>
+      </header>
+
+      <main id="top">
+        <section class="hero content-section">
+          <div class="eyebrow">WebGPU / progressive gaussian field</div>
+          <h1>Clarity has<br /><em>a depth.</em></h1>
+          <p class="hero-copy">
+            A two-pass blur field for interfaces that need to stay legible while the
+            world behind them keeps moving.
+          </p>
+          <div class="hero-meta">
+            <span>Scroll to move the source texture</span>
+            <span class="scroll-line" aria-hidden="true"><i></i></span>
+            <span>Drag the field below</span>
+          </div>
+        </section>
+
+        <section class="marquee-band" aria-label="Method statement">
+          <div class="marquee-track">
+            <span>separable sampling</span><b>✳</b><span>alpha-weighted radius</span><b>✳</b>
+            <span>preserve the edge</span><b>✳</b><span>separable sampling</span><b>✳</b>
+          </div>
+        </section>
+
+        <section class="content-section split-section" id="method">
+          <div class="section-label">01 / method</div>
+          <div class="section-body">
+            <p class="section-kicker">The visible canvas is the final pass.</p>
+            <h2>Read the<br /><span>space between</span><br />the samples.</h2>
+            <p class="section-copy">
+              The source is painted into a texture, blurred vertically, then blurred
+              horizontally into the fixed navigation layer. The radius is a continuous
+              curve, not a hard mask, so the transition can disappear into motion.
+            </p>
+          </div>
+          <div class="diagram-card" aria-label="Two pass diagram">
+            <div class="diagram-node"><small>source</small><strong>texture</strong></div>
+            <div class="diagram-arrow">→</div>
+            <div class="diagram-node accent"><small>pass 01</small><strong>Y / field</strong></div>
+            <div class="diagram-arrow">→</div>
+            <div class="diagram-node warm"><small>pass 02</small><strong>X / finish</strong></div>
+          </div>
+        </section>
+
+        <section class="signal-grid content-section" id="signals">
+          <div class="section-label">02 / signals</div>
+          <article class="signal-card signal-card-large">
+            <span class="card-number">A</span>
+            <h3>More signal.<br /><em>Less noise.</em></h3>
+            <p>At the top edge, type and color resolve into a soft, readable veil.</p>
+          </article>
+          <article class="signal-card signal-card-tall">
+            <span class="card-number">B</span>
+            <div class="card-swatch"></div>
+            <p>Fine lines expose spacing, sample count, and edge normalization.</p>
+          </article>
+          <article class="signal-card signal-card-wide">
+            <span class="card-number">C</span>
+            <p class="quote">“The blur should feel like atmosphere, not a sticker.”</p>
+            <span class="quote-byline">— working principle / 2026</span>
+          </article>
+        </section>
+
+        <section class="content-section notes-section" id="notes">
+          <div class="section-label">03 / notes</div>
+          <div class="notes-list">
+            <div><span>01</span><p>Public radius is Gaussian sigma; shader support is 3 × sigma.</p></div>
+            <div><span>02</span><p>Navbar mode derives radius from Y, keeping the vertical pass first.</p></div>
+            <div><span>03</span><p>Edge samples are renormalized when the boundary is meant to stay crisp.</p></div>
+          </div>
+        </section>
+      </main>
+
+      <aside class="control-dock" aria-label="Blur controls">
+        <div class="dock-header">
+          <div>
+            <span class="dock-eyebrow">live instrument</span>
+            <strong>blur / field</strong>
+          </div>
+          <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+        </div>
+        <p class="status-message" id="gpu-status">Checking WebGPU…</p>
+        <div class="control-rule"></div>
+        <label class="control-row">
+          <span>mode</span>
+          <select id="mode-control">
+            <option value="navbar">navbar gradient</option>
+            <option value="reference">alpha mask</option>
+          </select>
+        </label>
+        <label class="control-row range-row">
+          <span>sigma <output id="radius-value">16 px</output></span>
+          <input id="radius-control" type="range" min="0" max="40" step="0.5" value="16" />
+        </label>
+        <label class="control-row range-row">
+          <span>samples <output id="samples-value">15 / axis</output></span>
+          <input id="samples-control" type="range" min="1" max="32" step="1" value="15" />
+        </label>
+        <label class="control-row range-row gradient-only">
+          <span>fade start <output id="start-value">0%</output></span>
+          <input id="start-control" type="range" min="0" max="0.9" step="0.01" value="0" />
+        </label>
+        <label class="control-row range-row gradient-only">
+          <span>fade end <output id="end-value">100%</output></span>
+          <input id="end-control" type="range" min="0.1" max="1" step="0.01" value="1" />
+        </label>
+        <label class="toggle-row">
+          <input id="order-control" type="checkbox" checked />
+          <span class="toggle-ui" aria-hidden="true"></span>
+          <span>vertical pass first</span>
+        </label>
+        <label class="toggle-row">
+          <input id="edge-control" type="checkbox" checked />
+          <span class="toggle-ui" aria-hidden="true"></span>
+          <span>normalize edges</span>
+        </label>
+        <div class="dock-footer">
+          <span id="pass-value">Y → X</span>
+          <span id="frame-value">CPU — ms</span>
+        </div>
+      </aside>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
