@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/twostraws/Inferno",
+  "commit": "a40c7a0bdec03aae1bd0b96c41d6a75451bafd2c",
+  "retrievedAt": "2026-09-16",
+  "files": [
+    "LICENSE",
+    "Sources/Inferno/Shaders/Blur/VariableGaussianBlur.metal",
+    "Sources/Inferno/SwiftUI/View+variableBlur.swift",
+    "Sources/Inferno/SwiftUI/VisualEffect+variableBlur.swift",
+    "Sandbox/Inferno/ShaderPreviews/ProgressiveBlurPreview.swift"
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "webgpu-progressive-blur",
+  "version": "0.0.0",
+  "private": true,
+  "description": "WebGPU progressive blur for blog navigation, inspired by Inferno.",
+  "type": "module",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
+  ]
+}
