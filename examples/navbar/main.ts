@@ -74,6 +74,23 @@ function drawScene(): void {
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, width, sceneHeight);
 
+  // Keep a high-frequency probe in the first viewport so the blur is inspectable
+  // before scrolling. The same texture then continues moving behind the navbar.
+  ctx.save();
+  ctx.globalAlpha = 0.82;
+  ctx.strokeStyle = 'rgba(240, 234, 219, 0.58)';
+  ctx.lineWidth = Math.max(1, pixelRatio);
+  for (let x = 0; x < width; x += Math.round(32 * pixelRatio)) {
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, 0);
+    ctx.lineTo(x + 0.5, Math.round(150 * pixelRatio));
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#f0eadb';
+  ctx.font = `700 ${Math.round(58 * pixelRatio)}px Avenir Next, Helvetica Neue, sans-serif`;
+  ctx.fillText('SIGNAL / SOURCE', Math.round(width * 0.06), Math.round(105 * pixelRatio));
+  ctx.restore();
+
   for (let y = 0; y < sceneHeight; y += Math.round(36 * pixelRatio)) {
     ctx.strokeStyle = y % Math.round(144 * pixelRatio) === 0 ? 'rgba(233, 226, 208, 0.18)' : 'rgba(233, 226, 208, 0.07)';
     ctx.lineWidth = Math.max(1, pixelRatio);
