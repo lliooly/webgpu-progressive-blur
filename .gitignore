@@ -1,8 +1,10 @@
 node_modules/
 dist/
+examples/**/dist/
 coverage/
 *.tgz
 .DS_Store
 .env
 .env.*
 !.env.example
+.vite/

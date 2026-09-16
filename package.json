@@ -1,14 +1,45 @@
 {
   "name": "webgpu-progressive-blur",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "WebGPU progressive blur for blog navigation, inspired by Inferno.",
   "type": "module",
   "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./dom": {
+      "types": "./dist/dom/index.d.ts",
+      "import": "./dist/dom/index.js"
+    },
+    "./shaders": {
+      "types": "./dist/shaders/variable-blur.wgsl.d.ts",
+      "import": "./dist/shaders/variable-blur.wgsl.js"
+    }
+  },
   "files": [
     "dist",
     "README.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md"
-  ]
+  ],
+  "scripts": {
+    "dev": "vite --config vite.config.ts",
+    "build": "npm run build:lib && npm run build:demo",
+    "build:lib": "tsc -p tsconfig.build.json",
+    "build:demo": "vite build --config vite.config.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "pack:check": "npm run build && npm pack --dry-run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.3",
+    "@webgpu/types": "^0.1.72",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  }
 }
