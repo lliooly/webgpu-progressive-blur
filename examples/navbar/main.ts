@@ -4,6 +4,7 @@ import {
   type BlurMode,
   type ProgressiveBlurRenderer,
 } from '@webgpu-progressive-blur';
+import html2canvas from 'html2canvas';
 import './style.css';
 
 const nav = document.querySelector<HTMLElement>('#site-nav')!;
@@ -26,15 +27,13 @@ const frameValue = document.querySelector<HTMLElement>('#frame-value')!;
 const gradientControls = [...document.querySelectorAll<HTMLElement>('.gradient-only')];
 
 const sourceCanvas = document.createElement('canvas');
-const sceneCanvas = document.createElement('canvas');
 const maskCanvas = document.createElement('canvas');
 const sourceContext = sourceCanvas.getContext('2d', { alpha: false })!;
-const sceneContext = sceneCanvas.getContext('2d', { alpha: false })!;
 const maskContext = maskCanvas.getContext('2d')!;
 
 let renderer: ProgressiveBlurRenderer | undefined;
 let pixelRatio = Math.min(2, window.devicePixelRatio || 1);
-let sceneHeight = 0;
+let pageSnapshot: HTMLCanvasElement | undefined;
 let renderFrame: number | undefined;
 let resizeFrame: number | undefined;
 let lastRenderAt = 0;
@@ -46,124 +45,68 @@ function setStatus(state: 'pending' | 'ready' | 'fallback' | 'error', message: s
 }
 
 function currentGradient(): { start: number; end: number; direction: 'top-to-bottom' } {
+  const navHeight = Math.max(1, nav.getBoundingClientRect().height);
+  const outputHeight = Math.max(1, outputCanvas.getBoundingClientRect().height);
+  const visibleRatio = Math.min(1, navHeight / outputHeight);
+  const start = Number(startControl.value) * visibleRatio;
+  const end = Math.max(Number(endControl.value), Number(startControl.value) + 0.01) * visibleRatio;
   return {
-    start: Number(startControl.value),
-    end: Math.max(Number(endControl.value), Number(startControl.value) + 0.01),
+    start,
+    end: Math.max(end, start + 0.01),
     direction: 'top-to-bottom',
   };
 }
 
-function drawScene(): void {
-  const width = Math.max(1, Math.round(window.innerWidth * pixelRatio));
-  sceneHeight = Math.max(
-    2600,
-    Math.round(Math.max(document.documentElement.scrollHeight, window.innerHeight * 3.5) * pixelRatio),
+async function capturePageSnapshot(): Promise<void> {
+  const cssWidth = Math.max(1, document.documentElement.clientWidth || window.innerWidth);
+  const cssHeight = Math.max(
+    window.innerHeight,
+    document.documentElement.scrollHeight,
+    document.body.scrollHeight,
   );
-  sceneCanvas.width = width;
-  sceneCanvas.height = sceneHeight;
-
-  const ctx = sceneContext;
-  ctx.fillStyle = '#0d1119';
-  ctx.fillRect(0, 0, width, sceneHeight);
-
-  const background = ctx.createLinearGradient(0, 0, width, sceneHeight);
-  background.addColorStop(0, '#142536');
-  background.addColorStop(0.35, '#101923');
-  background.addColorStop(0.7, '#28191c');
-  background.addColorStop(1, '#111217');
-  ctx.fillStyle = background;
-  ctx.fillRect(0, 0, width, sceneHeight);
-
-  // Keep a high-frequency probe in the first viewport so the blur is inspectable
-  // before scrolling. The same texture then continues moving behind the navbar.
-  ctx.save();
-  ctx.globalAlpha = 0.82;
-  ctx.strokeStyle = 'rgba(240, 234, 219, 0.58)';
-  ctx.lineWidth = Math.max(1, pixelRatio);
-  for (let x = 0; x < width; x += Math.round(32 * pixelRatio)) {
-    ctx.beginPath();
-    ctx.moveTo(x + 0.5, 0);
-    ctx.lineTo(x + 0.5, Math.round(150 * pixelRatio));
-    ctx.stroke();
-  }
-  ctx.fillStyle = '#f0eadb';
-  ctx.font = `700 ${Math.round(58 * pixelRatio)}px Avenir Next, Helvetica Neue, sans-serif`;
-  ctx.fillText('SIGNAL / SOURCE', Math.round(width * 0.06), Math.round(105 * pixelRatio));
-  ctx.restore();
-
-  for (let y = 0; y < sceneHeight; y += Math.round(36 * pixelRatio)) {
-    ctx.strokeStyle = y % Math.round(144 * pixelRatio) === 0 ? 'rgba(233, 226, 208, 0.18)' : 'rgba(233, 226, 208, 0.07)';
-    ctx.lineWidth = Math.max(1, pixelRatio);
-    ctx.beginPath();
-    ctx.moveTo(0, y + 0.5);
-    ctx.lineTo(width, y + 0.5);
-    ctx.stroke();
-  }
-
-  const blobs = [
-    { x: 0.76, y: 0.12, r: 0.25, color: '#d8a44e' },
-    { x: 0.18, y: 0.35, r: 0.22, color: '#c94d3d' },
-    { x: 0.82, y: 0.57, r: 0.32, color: '#2d6c74' },
-    { x: 0.12, y: 0.8, r: 0.27, color: '#c8c2a6' },
-  ];
-  for (const blob of blobs) {
-    const gradient = ctx.createRadialGradient(
-      width * blob.x,
-      sceneHeight * blob.y,
-      0,
-      width * blob.x,
-      sceneHeight * blob.y,
-      width * blob.r,
-    );
-    gradient.addColorStop(0, `${blob.color}cc`);
-    gradient.addColorStop(1, `${blob.color}00`);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, sceneHeight);
-  }
-
-  ctx.save();
-  ctx.globalAlpha = 0.86;
-  ctx.fillStyle = '#f0eadb';
-  ctx.font = `700 ${Math.round(Math.max(74, width * 0.13))}px Baskerville, Georgia, serif`;
-  ctx.letterSpacing = `${Math.round(2 * pixelRatio)}px`;
-  const words = ['STAY', 'WITH', 'THE', 'SIGNAL', 'MOVE', 'SLOWLY'];
-  words.forEach((word, index) => {
-    const x = index % 2 === 0 ? width * 0.08 : width * 0.32;
-    const y = sceneHeight * (0.1 + index * 0.145);
-    ctx.fillText(word, x, y);
+  const snapshot = await html2canvas(document.body, {
+    backgroundColor: null,
+    height: cssHeight,
+    logging: false,
+    scale: pixelRatio,
+    scrollX: 0,
+    scrollY: 0,
+    width: cssWidth,
+    windowHeight: cssHeight,
+    windowWidth: cssWidth,
+    ignoreElements: (element) =>
+      element.id === 'site-nav' || element.classList.contains('control-dock'),
   });
-  ctx.restore();
-
-  ctx.save();
-  ctx.strokeStyle = 'rgba(240, 234, 219, 0.72)';
-  ctx.lineWidth = Math.max(1, pixelRatio);
-  for (let index = 0; index < 18; index += 1) {
-    const x = width * (0.08 + (index % 6) * 0.16);
-    const y = sceneHeight * (0.16 + Math.floor(index / 6) * 0.28);
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + width * 0.1, y + sceneHeight * 0.12);
-    ctx.stroke();
-  }
-  ctx.restore();
+  pageSnapshot = snapshot;
 }
 
 function drawSourceSlice(): void {
   const navHeight = Math.max(1, nav.getBoundingClientRect().height);
   const width = Math.max(1, Math.round(window.innerWidth * pixelRatio));
-  const height = Math.max(1, Math.round(navHeight * pixelRatio));
+  const outputHeight = Math.max(1, outputCanvas.getBoundingClientRect().height);
+  const height = Math.max(1, Math.round(outputHeight * pixelRatio));
   if (sourceCanvas.width !== width || sourceCanvas.height !== height) {
     sourceCanvas.width = width;
     sourceCanvas.height = height;
   }
 
-  const sourceY = Math.max(0, Math.min(sceneHeight - height, Math.round(window.scrollY * pixelRatio)));
+  const sourceY = pageSnapshot
+    ? Math.max(0, Math.min(pageSnapshot.height - height, Math.round(window.scrollY * pixelRatio)))
+    : 0;
   sourceContext.clearRect(0, 0, width, height);
-  sourceContext.drawImage(sceneCanvas, 0, sourceY, width, height, 0, 0, width, height);
+  if (pageSnapshot) {
+    sourceContext.drawImage(pageSnapshot, 0, sourceY, width, height, 0, 0, width, height);
+  } else {
+    sourceContext.fillStyle = '#0d1119';
+    sourceContext.fillRect(0, 0, width, height);
+  }
 
   maskCanvas.width = width;
   maskCanvas.height = height;
-  const gradient = maskContext.createLinearGradient(0, height * Number(startControl.value), 0, height * Number(endControl.value));
+  const visibleRatio = Math.min(1, navHeight / outputHeight);
+  const gradientStart = Number(startControl.value) * visibleRatio;
+  const gradientEnd = Math.max(Number(endControl.value), Number(startControl.value) + 0.01) * visibleRatio;
+  const gradient = maskContext.createLinearGradient(0, height * gradientStart, 0, height * gradientEnd);
   gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
   gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
   maskContext.fillStyle = gradient;
@@ -222,10 +165,16 @@ function handleResize(): void {
   resizeFrame = requestAnimationFrame(() => {
     resizeFrame = undefined;
     pixelRatio = Math.min(2, window.devicePixelRatio || 1);
-    drawScene();
-    drawSourceSlice();
-    renderer?.resize(window.innerWidth, nav.getBoundingClientRect().height, pixelRatio);
-    scheduleRender();
+    renderer?.resize(window.innerWidth, outputCanvas.getBoundingClientRect().height, pixelRatio);
+    void capturePageSnapshot()
+      .then(() => {
+        drawSourceSlice();
+        scheduleRender();
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        setStatus('error', `Page capture failed — ${message}`);
+      });
   });
 }
 
@@ -247,8 +196,6 @@ function bindControls(): void {
 async function boot(): Promise<void> {
   bindControls();
   updateControlLabels();
-  drawScene();
-  drawSourceSlice();
   setStatus('pending', 'Requesting a high-performance adapter…');
 
   const capability = getWebGPUCapability();
@@ -259,6 +206,9 @@ async function boot(): Promise<void> {
   }
 
   try {
+    setStatus('pending', 'Capturing the page behind the navigation…');
+    await capturePageSnapshot();
+    drawSourceSlice();
     renderer = await createProgressiveBlur({
       canvas: outputCanvas,
       source: sourceCanvas,
