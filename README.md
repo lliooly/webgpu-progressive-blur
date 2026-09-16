@@ -6,7 +6,7 @@
 
 核心库、CPU 参考计算、DOM 生命周期适配器和可运行展示页已实现。Chrome 的 WebGPU 运行态验证已通过：固定导航栏会随着滚动更新源纹理，渲染采用纵向和横向两遍分离采样。
 
-`webgpu-progressive-blur` 仍是本地暂定名称，`private: true` 保留以避免误发布。真实博客仓库路径尚未提供，因此 `/dom` 使用调用者提供的 capture provider，不把某个 DOM 截图库冒充为已验证的博客集成方案。
+`webgpu-progressive-blur` 仍是本地暂定名称，`private: true` 保留以避免误发布。`/dom` 使用调用者提供的 capture provider；当前博客接入使用 `html2canvas-pro` 做一次性页面快照，并在滚动时裁剪缓存纹理。
 
 ## 文档
 
