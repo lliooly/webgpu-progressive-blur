@@ -70,6 +70,14 @@
 - 视觉验收：清晰端残影、灰团突变、条纹、滚动时闪烁、顶部边界异常。
 - 记录设备、DPR、尺寸、半径、采样数量和帧耗时，不以降低画质换取预设性能指标。
 
+## 2026-09-16 核心算法复验
+
+- WGSL fragment 改用 `@builtin(position)` 的像素空间坐标，CPU 参考使用同一像素中心和双线性采样定义。
+- uniform/pass 编码已共享；两遍分别使用独立 uniform buffer，避免提交前第二次 `queue.writeBuffer` 覆盖第一遍的 axis 和参数。
+- 新增真实 WebGPU offscreen readback harness，覆盖非方形纹理、横纵单轴、reference Alpha mask、navbar 双方向、渐进半径、边缘归一化和透明外部。
+- Chrome WebGPU 验收通过 8 个 case，最大绝对误差 `0.00093`，平均误差均低于 `0.00075`，无 NaN/Inf。
+- 该结果只证明核心 kernel；博客 DOM 捕获、导航栏对齐和展示页仍需在核心稳定后单独验收。
+
 ## 许可证与致谢
 
 新库建议采用 MIT。THIRD_PARTY_NOTICES 保留 Inferno 的版权及完整 MIT 许可，shader 适配说明保留 Dale Price 作者信息，并记载 Variablur 的历史来源；若使用其独有代码，同样保留相应许可。README 引用 Inferno 的固定提交、文件与修改说明。上述文件必须进入 npm 发布产物。新库署名使用用户确认的身份。
@@ -89,5 +97,5 @@
 - 建库时使用临时本地包名；公开包名和 npm scope 在发布前确定。
 - 必须通过 npm pack 检查包内容，并在独立消费项目安装生成的 tgz，验证类型、构建和浏览器执行。直接引用源码不算包安装验证。
 - 最终验收包含真实 DOM 滚动正文、图片加载、主题切换、resize、销毁重建，并验证 npm 包确实被博客消费。
-- 已读取本地 `blog-astro` 博客仓库并确认导航结构。真实接入通过 `/dom` 的 provider 接口连接：使用 `html2canvas-pro` 完成一次性页面快照，滚动时只裁剪缓存到导航栏纹理，再交给 WebGPU 两遍渲染；浅色、深色、滚动和 WebGPU fallback 已在浏览器中验证。
+- 已读取本地 `blog-astro` 博客仓库并确认导航结构；真实 DOM 接入保留为后续阶段。当前不把 `html2canvas-pro` 快照、滚动裁剪或博客视觉结果计入核心算法验收。
 - 实现、打包和本地安装验证属于开发范围；发布注册表及创建远程仓库是后续步骤。

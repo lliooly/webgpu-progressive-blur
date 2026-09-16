@@ -4,9 +4,9 @@
 
 ## 当前状态
 
-核心库、CPU 参考计算、DOM 生命周期适配器和可运行展示页已实现。Chrome 的 WebGPU 运行态验证已通过：固定导航栏会随着滚动更新源纹理，渲染采用纵向和横向两遍分离采样。
+核心 blur kernel 已按固定提交的 Inferno Metal 规则重写：使用像素空间坐标、3σ 支持半径、单轴对称采样、边缘权重归一化和独立的两遍 uniforms。CPU 参考与真实 Chrome WebGPU 读回验收均已通过，8 个非方形/渐进 mask case 的最大误差为 0.00093，低于 0.003 阈值。
 
-`webgpu-progressive-blur` 仍是本地暂定名称，`private: true` 保留以避免误发布。`/dom` 使用调用者提供的 capture provider；当前博客接入使用 `html2canvas-pro` 做一次性页面快照，并在滚动时裁剪缓存纹理。
+博客、DOM 捕获和导航栏展示暂不属于本阶段验收。`webgpu-progressive-blur` 仍是本地暂定名称，`private: true` 保留以避免误发布。
 
 ## 文档
 
@@ -76,7 +76,7 @@ blur.destroy();
 
 ## 交付目标
 
-ESM 与 TypeScript 类型声明，内嵌 WGSL，无框架绑定，支持服务端构建时安全导入。以 npm pack 生成的包进行独立安装测试，最终验证博客真实 DOM 导航栏。
+ESM 与 TypeScript 类型声明，内嵌 WGSL，无框架绑定，支持服务端构建时安全导入。核心算法通过后，再进行 npm 包消费和真实 DOM 导航栏验收。
 
 ## 许可
 

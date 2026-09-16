@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebGPU progressive blur validation</title>
+    <style>
+      body { margin: 2rem; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+      body[data-status="passed"] { color: #126b35; }
+      body[data-status="failed"] { color: #9b1c1c; }
+      pre { white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>WebGPU progressive blur validation</h1>
+    <pre id="result">Running…</pre>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

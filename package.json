@@ -32,6 +32,7 @@
     "build:demo": "vite build --config vite.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
+    "test:gpu": "vite --config vite.gpu.config.ts --host 127.0.0.1",
     "test:watch": "vitest --config vitest.config.ts",
     "pack:check": "npm run build && npm pack --dry-run"
   },
