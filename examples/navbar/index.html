@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f4f4f0" />
     <link rel="icon" href="data:," />
-    <title>Progressive Blur — 效果调试台</title>
+    <title>Progressive Blur — 预设效果台</title>
   </head>
   <body>
     <main class="playground">
@@ -14,10 +14,47 @@
           <span class="brand-symbol" aria-hidden="true">◒</span>
           <div>
             <h1>Progressive Blur</h1>
-            <p>渐变模糊 · 效果调试台</p>
+            <p>渐变模糊 · 预设效果台</p>
           </div>
         </div>
-        <section class="control-section">
+        <section class="control-section preset-picker">
+          <h2><span>01</span> 选择使用场景</h2>
+          <div class="preset-options" role="group" aria-label="效果预设">
+            <button data-preset="navbar" class="selected" aria-pressed="true">
+              ▔ <span>顶部导航<small>Navbar</small></span>
+            </button>
+            <button data-preset="sidebar" aria-pressed="false">
+              ▏ <span>侧边栏<small>Sidebar</small></span>
+            </button>
+            <button data-preset="bottom-bar" aria-pressed="false">
+              ▁ <span>底部操作栏<small>Bottom bar</small></span>
+            </button>
+            <button data-preset="caption" aria-pressed="false">
+              ▤ <span>图片标题<small>Caption</small></span>
+            </button>
+            <button data-preset="edge" aria-pressed="false">
+              ≋ <span>内容边缘<small>Edge fade</small></span>
+            </button>
+            <button data-preset="panel" aria-pressed="false">
+              ▣ <span>浮动面板<small>Glass panel</small></span>
+            </button>
+            <button data-preset="experiment" aria-pressed="false">
+              ◯ <span>形状实验<small>Custom shapes</small></span>
+            </button>
+          </div>
+          <p class="preset-description" id="preset-description"></p>
+        </section>
+        <section class="control-section" id="preset-settings">
+          <h2><span>02</span> 渐隐设置</h2>
+          <label class="range-label" for="placement">组件所在边缘</label>
+          <select id="placement" aria-label="组件所在边缘"></select>
+          <label class="range-label" for="fade"
+            >渐隐长度 <output id="fade-value">48 px</output></label
+          >
+          <input id="fade" type="range" min="0" max="160" value="48" step="1" />
+          <p class="control-hint">组件内部保持模糊，向内容方向渐隐。</p>
+        </section>
+        <section class="control-section experiment-controls" hidden>
           <h2><span>01</span> 模糊形状</h2>
           <div class="shape-options" role="group" aria-label="模糊形状">
             <button
@@ -36,7 +73,7 @@
             </button>
           </div>
         </section>
-        <section class="control-section">
+        <section class="control-section experiment-controls" hidden>
           <h2><span>02</span> 渐变方向</h2>
           <div id="radial-direction" class="radial-direction">
             <i aria-hidden="true"></i>
@@ -129,15 +166,24 @@
             step="1"
             value="24"
           />
-          <label class="range-label" for="size"
+          <label class="range-label experiment-controls" for="size"
             >形状大小 <output id="size-value">60%</output></label
           >
-          <input id="size" type="range" min="20" max="85" step="1" value="60" />
-          <label class="range-label" for="transition"
+          <input
+            class="experiment-controls"
+            id="size"
+            type="range"
+            min="20"
+            max="85"
+            step="1"
+            value="60"
+          />
+          <label class="range-label experiment-controls" for="transition"
             >渐变范围 <output id="transition-value">80%</output></label
           >
           <input
             id="transition"
+            class="experiment-controls"
             type="range"
             min="10"
             max="100"
@@ -153,7 +199,7 @@
               aria-hidden="true"
             ></i
           ></label>
-          <label class="switch-row"
+          <label class="switch-row experiment-controls"
             ><span>形状轮廓</span
             ><input id="show-outline" type="checkbox" role="switch" checked /><i
               aria-hidden="true"
@@ -203,13 +249,78 @@
                 ><span class="drag-handle">⠿</span>
               </div>
             </div>
+            <div
+              id="preset-component"
+              class="preset-component"
+              data-kind="navbar"
+            >
+              <div id="component-content"></div>
+            </div>
             <span class="original-badge">原图 · ORIGINAL</span>
           </div>
           <div class="canvas-caption">
-            <span>拖动模糊区域，观察图片与文字的变化</span
+            <span id="preview-hint">组件前景保持清晰，背景向内容区渐隐</span
             ><span id="position">50 / 50</span>
           </div>
         </div>
+        <section class="code-panel" aria-label="安装与接入代码">
+          <div class="code-heading">
+            <div>
+              <strong>带到你的项目里</strong
+              ><span>参数已同步 · 复制即可接入</span>
+            </div>
+            <button id="copy-code" type="button">复制代码</button>
+          </div>
+          <label class="code-framework" for="code-framework"
+            >接入方式
+            <select id="code-framework">
+              <option value="react">React 源码组件</option>
+              <option value="astro">Astro 源码组件</option>
+              <option value="dom">原生 JavaScript</option>
+            </select>
+          </label>
+          <div class="code-tabs" role="tablist" aria-label="代码类型">
+            <button
+              role="tab"
+              id="tab-install"
+              aria-controls="code-content"
+              aria-selected="true"
+              data-code="install"
+            >
+              01 安装
+            </button>
+            <button
+              role="tab"
+              id="tab-js"
+              aria-controls="code-content"
+              aria-selected="false"
+              data-code="js"
+              tabindex="-1"
+            >
+              02 JavaScript
+            </button>
+            <button
+              role="tab"
+              id="tab-html"
+              aria-controls="code-content"
+              aria-selected="false"
+              data-code="html"
+              tabindex="-1"
+            >
+              03 HTML / CSS
+            </button>
+          </div>
+          <pre
+            id="code-content"
+            role="tabpanel"
+            aria-labelledby="tab-install"
+            tabindex="0"
+          ><code id="generated-code"></code></pre>
+          <p id="code-note">
+            在客户端挂载后初始化；组件卸载时调用 effect.destroy()。
+          </p>
+          <span id="copy-status" role="status"></span>
+        </section>
         <footer class="workspace-footer">
           <span id="gpu-status" role="status">正在启动 WebGPU…</span
           ><span

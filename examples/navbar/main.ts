@@ -1,3 +1,4 @@
+import { createPresetStudio } from "./studio";
 import {
   createProgressiveBlur,
   type ProgressiveBlurRenderer,
@@ -48,6 +49,18 @@ let backgroundDirty = true;
 let uploadVersion = 0;
 let disposed = false;
 let pointer: { id: number; x: number; y: number } | undefined;
+
+const studio = createPresetStudio({
+  scene,
+  stage,
+  getRatio: () => dpr,
+  getExperiment: () => state,
+  schedule: () => {
+    syncControls();
+    schedule();
+  },
+  status: setStatus,
+});
 
 function setStatus(message: string, error = false): void {
   status.textContent = message;
@@ -191,6 +204,10 @@ function render(): void {
     drawScene();
     backgroundDirty = false;
   }
+  if (studio.isActive()) {
+    void studio.refresh();
+    return;
+  }
   updateGeometry();
   if (!renderer) return;
   if (renderer.status.state !== "ready") {
@@ -292,6 +309,7 @@ function syncControls(): void {
     state.shape === "circle" ? "圆形渐变" : "方形渐变";
   $("#lens-tag").textContent =
     state.shape === "circle" ? "RADIAL BLUR" : "LINEAR BLUR";
+  studio.sync();
 }
 
 for (const key of ["radius", "size", "transition"] as const) {
@@ -422,6 +440,7 @@ $("#reset").addEventListener("click", () => {
   imageMessage.textContent = "";
   scene.setAttribute("aria-label", "山脉照片与大小文字组成的模糊效果测试背景");
   comparison(false);
+  studio.reset();
   syncControls();
   schedule(true);
 });
@@ -492,4 +511,5 @@ window.addEventListener("pagehide", (event) => {
   observer.disconnect();
   cancelAnimationFrame(frame);
   renderer?.destroy();
+  studio.destroy();
 });
