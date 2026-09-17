@@ -25,6 +25,8 @@ export const componentName = (name) =>
     .map((part) => part[0].toUpperCase() + part.slice(1))
     .join("");
 
+const PACKAGE_IMPORT = "webgpu-progressive-blur/dom";
+
 function reactWrapper(name, preset) {
   const definition = presetDefinitions[preset];
   const omitted = ["preset", "placement"];
@@ -60,9 +62,16 @@ function astroWrapper(name, preset) {
   return `---\nimport ProgressiveBlur, { type Props as BaseProps } from './progressive-blur.astro';\nexport interface Props extends ${extendsType} {\n${placement}}\n${props}---\n<ProgressiveBlur {...props} preset="${preset}"${fixedPlacement}><slot /></ProgressiveBlur>\n`;
 }
 
-export function templates(framework, selected) {
+export function templates(
+  framework,
+  selected,
+  packageName = "webgpu-progressive-blur",
+) {
   const read = (path) =>
-    readFileSync(new URL(`../templates/${path}`, import.meta.url), "utf8");
+    readFileSync(new URL(`../templates/${path}`, import.meta.url), "utf8").replaceAll(
+      PACKAGE_IMPORT,
+      `${packageName}/dom`,
+    );
   const extension = framework === "react" ? "tsx" : "astro";
   const files = {
     "lifecycle.ts": read("shared/lifecycle.ts"),

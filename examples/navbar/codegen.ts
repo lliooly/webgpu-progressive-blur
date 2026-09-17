@@ -15,6 +15,7 @@ export interface ExperimentConfig {
 export interface GeneratedExample {
   install: string;
   usage: string;
+  html: string;
   notes: string;
   mode: 'source' | 'dom';
   framework: CodegenFramework;
@@ -126,6 +127,7 @@ const effect = await attachProgressiveBlur(element, ${api});
   return {
     install: `npm install webgpu-progressive-blur@${input.version}`,
     usage,
+    html,
     notes: experiment
       ? '形状实验只导出 DOM API：源码 CLI 首版不提供 circle 命令。尺寸与位置请在 HTML / CSS 中调整。'
       : 'DOM 入口在客户端挂载后初始化；背景更新后调用 effect.refresh()，组件卸载时调用 effect.destroy()。',
@@ -171,6 +173,7 @@ import ${name} from '../components/progressive_blur/progressive-blur-${input.pre
   return {
     install,
     usage,
+    html: '',
     notes: `将安装命令放在项目根目录执行。React 示例放入 src/App.tsx；Astro 示例放入 src/pages/index.astro。默认写入 src/components/progressive_blur（无 src 时写入 components）。组件源码可编辑，用户 style 会覆盖默认内联布局；普通 class 不会覆盖相同的内联属性。背景需位于组件后方，caption / edge 的父容器需 position: relative；不要用 overflow: hidden 裁掉渐隐外延。背景变化后，React 改变 refreshKey，Astro 派发 progressive-blur:refresh。`,
     mode: 'source',
     framework: input.framework,

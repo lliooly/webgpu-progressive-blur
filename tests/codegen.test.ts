@@ -87,6 +87,24 @@ describe('effect studio code generation', () => {
     expect(generated.framework).toBe('dom');
     expect(generated.install).toBe('npm install webgpu-progressive-blur@0.2.0');
     expect(generated.usage).toContain('profile');
+    expect(generated.html).toContain('<div class="blur-target">');
+    expect(generated.html).toContain('.blur-target');
+    expect(generated.html).toContain('position: relative; width: 60vmin;');
     expect(generated.notes).toContain('不提供 circle 命令');
+  });
+
+  it('returns runnable HTML/CSS for a regular DOM preset', () => {
+    const generated = generateExample({
+      version: '0.2.0',
+      framework: 'dom',
+      preset: 'navbar',
+      placement: 'top',
+      radius: 24,
+      transition: 48,
+      maxSamples: 32,
+    });
+    expect(generated.html).toContain('<div class="blur-target">');
+    expect(generated.html).toContain('position: fixed; top: 0;');
+    expect(generated.html).toContain('background: transparent;');
   });
 });

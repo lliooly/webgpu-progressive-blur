@@ -58,14 +58,8 @@ jobs:
           }
           NODE
 
-      - name: Check types
-        run: npm run typecheck
-
-      - name: Run tests
-        run: npm test
-
-      - name: Build package
-        run: npm run build
+      - name: Run release checks before package identity changes
+        run: npm run release:check
 
       - name: Publish to npm
         run: npm publish --access public
@@ -108,14 +102,8 @@ jobs:
           }
           NODE
 
-      - name: Check types
-        run: npm run typecheck
-
-      - name: Run tests
-        run: npm test
-
-      - name: Build package
-        run: npm run build
+      - name: Run release checks before package identity changes
+        run: npm run release:check
 
       - name: Configure GitHub package identity
         run: |
@@ -123,6 +111,6 @@ jobs:
           npm pkg set "publishConfig.registry=${GITHUB_REGISTRY}"
 
       - name: Publish to GitHub Packages
-        run: npm publish --access public
+        run: npm publish --access public --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

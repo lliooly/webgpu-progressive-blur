@@ -133,7 +133,9 @@ export function createPresetStudio(options: {
         ? generated.install
         : tab === "js"
           ? generated.usage
-          : generated.notes;
+          : sourceMode
+            ? generated.notes
+            : generated.html;
     $("#generated-code").textContent = displayedCode;
     $("#code-note").textContent = generated.notes;
     addAllButton.textContent = addAll ? "安装全部预设（已选择）" : "添加全部预设";

@@ -17,6 +17,7 @@ import {
   packageManagerExecutable,
   packageVersion,
 } from "../cli/index.mjs";
+import { templates } from "../cli/templates.mjs";
 
 const roots: string[] = [];
 
@@ -269,6 +270,54 @@ describe("source component CLI", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it.each([
+    ["0.2.0", "0.2.0"],
+    ["^0.2.0", "0.2.0"],
+    ["^0.1.2", "0.1.2"],
+  ])("accepts compatible installed runtime %s", (declared, installed) => {
+    const root = project({
+      dependencies: {
+        react: "^19.0.0",
+        ["webgpu-progressive-blur"]: declared,
+      },
+    });
+    installRuntime(root, installed);
+    expect(() => addComponents(["add", "panel", "--no-install"], root)).not.toThrow();
+  });
+
+  it.each(["0.2.0", "^0.2.0", "^0.1.2"])(
+    "accepts a compatible declared runtime %s before installation",
+    (declared) => {
+      const root = project({
+        dependencies: {
+          react: "^19.0.0",
+          ["webgpu-progressive-blur"]: declared,
+        },
+      });
+      expect(() => addComponents(["add", "panel", "--no-install"], root)).not.toThrow();
+    },
+  );
+
+  it("allows adding another preset after the first install", () => {
+    const root = project();
+    const calls: unknown[][] = [];
+    const installer = (...args: unknown[]) => {
+      calls.push(args);
+      const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+      manifest.dependencies["webgpu-progressive-blur"] = `^${packageVersion}`;
+      writeFileSync(join(root, "package.json"), JSON.stringify(manifest, null, 2));
+      installRuntime(root, packageVersion);
+      return { status: 0 };
+    };
+
+    addComponents(["add", "navbar"], root, installer);
+    expect(() => addComponents(["add", "sidebar"], root, installer)).not.toThrow();
+    expect(calls).toHaveLength(1);
+    expect(lstatSync(join(output(root), "progressive-blur-sidebar.tsx")).isFile()).toBe(
+      true,
+    );
+  });
+
   it("moves a compatible dev runtime to production dependencies and verifies the move", () => {
     const root = project({
       dependencies: { react: "^19.0.0" },
@@ -380,5 +429,14 @@ describe("source component CLI", () => {
     );
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain("Added: progressive-blur-navbar.tsx");
+  });
+
+  it("uses the scoped package identity in generated runtime imports", () => {
+    for (const framework of ["react", "astro"] as const) {
+      const files = templates(framework, ["navbar"], "@lliooly/webgpu-progressive-blur");
+      const source = Object.values(files).join("\n");
+      expect(source).toContain("@lliooly/webgpu-progressive-blur/dom");
+      expect(source).not.toContain("__PROGRESSIVE_BLUR_PACKAGE__");
+    }
   });
 });

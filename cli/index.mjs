@@ -15,10 +15,10 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import semver from "semver";
 import { presets, templates, exportLines } from "./templates.mjs";
 
-const PACKAGE_NAME = "webgpu-progressive-blur";
 const packageMetadata = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 );
+const PACKAGE_NAME = packageMetadata.name;
 export const packageVersion = packageMetadata.version;
 export const minimumRuntimeVersion = "0.1.1";
 export const runtimeSpec = `${PACKAGE_NAME}@${packageVersion}`;
@@ -411,7 +411,9 @@ function readInstalledRuntime(cwd) {
 
 function rangeMeetsMinimum(spec) {
   const range = semver.validRange(spec);
-  return Boolean(range && semver.satisfies(minimumRuntimeVersion, range));
+  return Boolean(
+    range && semver.intersects(range, `>=${minimumRuntimeVersion}`),
+  );
 }
 
 function installedMeetsMinimum(installed) {
@@ -453,11 +455,11 @@ function planDependency({ manifest, cwd, manager, noInstall, dryRun }) {
       );
       return { action: undefined, warnings };
     }
-    if (!rangeMeetsMinimum(declared.spec))
+    const installedOkay = installed ? installedMeetsMinimum(installed) : false;
+    if (!installed && !rangeMeetsMinimum(declared.spec))
       fail(
         `Declared ${PACKAGE_NAME}@${declared.spec} is below the minimum compatible version ${minimumRuntimeVersion}. Update the project dependency before generating components.`,
       );
-    const installedOkay = installed ? installedMeetsMinimum(installed) : false;
     const needsInstall = !installedOkay || declared.section === "devDependencies";
     if (!needsInstall) return { action: undefined, warnings };
     const action = {
@@ -500,7 +502,7 @@ function createPlan(parsed, cwd) {
   assertDirectoryChain(cwd, relativeOutput);
   assertNoOppositeFramework(output, framework);
 
-  const fileContents = templates(framework, parsed.selected);
+  const fileContents = templates(framework, parsed.selected, PACKAGE_NAME);
   const plannedFiles = new Set([...Object.keys(fileContents), "index.ts"]);
   for (const name of plannedFiles) assertOutputFile(resolve(output, name));
 
