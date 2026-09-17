@@ -1,0 +1,39 @@
+---
+import type { HTMLAttributes } from 'astro/types';
+import type { BlurPlacement, BlurPreset } from 'webgpu-progressive-blur/dom';
+import { presetLayout } from './layout';
+
+export interface Props extends HTMLAttributes<'div'> {
+  preset?: BlurPreset;
+  placement?: BlurPlacement;
+  radius?: number;
+  transition?: number;
+  maxSamples?: number;
+}
+const { preset = 'panel', placement, radius = 24, transition = 48, maxSamples = 32, style, ...props } = Astro.props;
+const options = JSON.stringify({ preset, placement, radius, transition, maxSamples });
+const layout = Object.entries(presetLayout(preset, placement)).map(([key, value]) => `${key.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}:${value}`).join(';');
+---
+<progressive-blur-host style="display:contents" data-options={options}>
+  <div {...props} data-blur-target style={typeof style === 'object' ? { ...presetLayout(preset, placement), ...style } : `${layout};${style ?? ''}`}><slot /></div>
+</progressive-blur-host>
+
+<script>
+  import { mountProgressiveBlur } from './lifecycle';
+  // A custom element handles normal navigation, ClientRouter swaps and removal.
+  if (!customElements.get('progressive-blur-host')) {
+    customElements.define('progressive-blur-host', class extends HTMLElement {
+      private dispose?: () => void;
+      private generation = 0;
+      connectedCallback() {
+        const generation = ++this.generation;
+        queueMicrotask(() => {
+          if (!this.isConnected || generation !== this.generation) return;
+          const target = this.querySelector<HTMLElement>(':scope > [data-blur-target]');
+          if (target) this.dispose = mountProgressiveBlur(target, JSON.parse(this.dataset.options ?? '{}'));
+        });
+      }
+      disconnectedCallback() { this.generation++; this.dispose?.(); this.dispose = undefined; }
+    });
+  }
+</script>

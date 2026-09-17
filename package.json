@@ -1,6 +1,6 @@
 {
   "name": "webgpu-progressive-blur",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": false,
   "description": "WebGPU progressive blur for DOM elements and interfaces, inspired by Inferno.",
   "type": "module",
@@ -40,7 +40,10 @@
     "dist",
     "README.md",
     "LICENSE",
-    "THIRD_PARTY_NOTICES.md"
+    "THIRD_PARTY_NOTICES.md",
+    "CHANGELOG.md",
+    "cli",
+    "templates"
   ],
   "dependencies": {
     "html2canvas": "^1.4.1"
@@ -54,20 +57,28 @@
     "test": "vitest run --config vitest.config.ts",
     "test:gpu": "vite --config vite.gpu.config.ts --host 127.0.0.1",
     "test:watch": "vitest --config vitest.config.ts",
-    "pack:check": "npm run build && npm pack --dry-run"
+    "pack:check": "npm run build && npm pack --dry-run",
+    "prepack": "npm run build:lib",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
     "@types/node": "^22.20.3",
-    "@webgpu/types": "^0.1.72",
     "typescript": "^7.0.2",
     "vite": "^8.3.0",
-    "vitest": "^5.0.1"
+    "vitest": "^5.0.1",
+    "@webgpu/types": "^0.1.72"
   },
-  "main": "index.js",
-  "directories": {
-    "doc": "docs",
-    "example": "examples",
-    "test": "tests"
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
-  "author": ""
+  "bin": {
+    "webgpu-progressive-blur": "./cli/index.mjs"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
 }
