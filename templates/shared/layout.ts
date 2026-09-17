@@ -1,6 +1,7 @@
 import type { BlurPlacement, BlurPreset } from "webgpu-progressive-blur/dom";
 
-// These are editable starting layouts; your class/style can override them.
+// These are editable starting layouts. The component merges user style after
+// these defaults; a regular class cannot override an equal inline property.
 export function presetLayout(
   preset: BlurPreset,
   placement?: BlurPlacement,

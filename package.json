@@ -46,7 +46,8 @@
     "templates"
   ],
   "dependencies": {
-    "html2canvas": "^1.4.1"
+    "html2canvas": "^1.4.1",
+    "semver": "^7.7.2"
   },
   "scripts": {
     "dev": "vite --config vite.config.ts",
