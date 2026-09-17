@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import semver from "semver";
 import { presets, templates, exportLines } from "./templates.mjs";
 
@@ -150,16 +150,24 @@ function isWindowsAbsolute(path) {
 }
 
 function resolveOutputDirectory(cwd, requested) {
+  const srcPath = resolve(cwd, "src");
+  const srcInfo = readPathInfo(srcPath);
   if (requested !== undefined) {
     if (!requested || isAbsolute(requested) || isWindowsAbsolute(requested))
       fail("--dir must be a non-empty relative subdirectory of the current project.");
     if (requested.split(/[\\/]/).some((part) => part === ".."))
       fail("--dir must not contain directory traversal.");
   }
+  if (
+    requested === undefined &&
+    srcInfo &&
+    (srcInfo.isSymbolicLink() || !srcInfo.isDirectory())
+  )
+    fail("The project's src path exists but is not a regular directory.");
   const output = resolve(
     cwd,
     requested ??
-      `${readPathInfo(resolve(cwd, "src"))?.isDirectory() ? "src/" : ""}components/progressive_blur`,
+      `${srcInfo?.isDirectory() ? "src/" : ""}components/progressive_blur`,
   );
   const rel = relative(resolve(cwd), output);
   if (!rel || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel))
@@ -403,9 +411,7 @@ function readInstalledRuntime(cwd) {
 
 function rangeMeetsMinimum(spec) {
   const range = semver.validRange(spec);
-  if (!range) return false;
-  const minimum = semver.minVersion(range);
-  return Boolean(minimum && semver.gte(minimum, minimumRuntimeVersion));
+  return Boolean(range && semver.satisfies(minimumRuntimeVersion, range));
 }
 
 function installedMeetsMinimum(installed) {
@@ -604,6 +610,7 @@ function writePlan(plan) {
   }
 
   const written = [];
+  const writeKinds = new Map();
   try {
     mkdirSync(plan.output, { recursive: true });
     assertDirectoryChain(plan.cwd, plan.relativeOutput);
@@ -613,10 +620,13 @@ function writePlan(plan) {
       if (exists && !plan.force) continue;
       writeAtomic(target, content);
       written.push(name);
+      writeKinds.set(name, exists ? "Overwrote" : "Added");
     }
     if (plan.indexSource !== plan.mergedIndex) {
+      const existed = Boolean(readPathInfo(plan.indexPath));
       writeAtomic(plan.indexPath, plan.mergedIndex);
       written.push("index.ts");
+      writeKinds.set("index.ts", existed ? "Updated" : "Added");
     }
   } catch (error) {
     fail(
@@ -631,17 +641,13 @@ function writePlan(plan) {
   for (const name of Object.keys(plan.fileContents)) {
     messages.push(
       written.includes(name)
-        ? plan.force
-          ? `Overwrote: ${name}`
-          : `Added: ${name}`
+        ? `${writeKinds.get(name)}: ${name}`
         : `Kept: ${name}`,
     );
   }
   messages.push(
     written.includes("index.ts")
-      ? plan.indexSource
-        ? "Updated: index.ts"
-        : "Added: index.ts"
+      ? `${writeKinds.get("index.ts")}: index.ts`
       : "Kept: index.ts",
   );
   if (plan.force)
@@ -677,7 +683,7 @@ function writePlan(plan) {
             `Package manager ${plan.manager.name} did not move ${PACKAGE_NAME} to dependencies. Files written: ${written.join(", ") || "none"}.`,
           );
       }
-      messages.push(`Installed: ${args[1]}`);
+      messages.push(`Installed: ${plan.dependency.action.spec}`);
     }
   } else {
     messages.push(...plan.dependency.warnings);

@@ -1,0 +1,14 @@
+---
+import { ClientRouter } from 'astro:transitions';
+import ProgressiveBlurNavbar from '../components/progressive_blur/progressive-blur-navbar.astro';
+---
+<html lang="en">
+  <head><meta charset="UTF-8" /><title>Astro router fixture about</title><ClientRouter /></head>
+  <body>
+    <main>Router page B</main>
+    <ProgressiveBlurNavbar id="persistent-nav" transition:persist radius={18} transition={48}>
+      <nav aria-label="Fixture navigation">Persistent navigation B</nav>
+    </ProgressiveBlurNavbar>
+    <a href="/">Home</a>
+  </body>
+</html>

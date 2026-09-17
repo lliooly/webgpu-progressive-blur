@@ -10,30 +10,240 @@ export interface Props extends HTMLAttributes<'div'> {
   transition?: number;
   maxSamples?: number;
 }
-const { preset = 'panel', placement, radius = 24, transition = 48, maxSamples = 32, style, ...props } = Astro.props;
+
+type StyleObject = Record<string, string | number | undefined>;
+
+function cssName(name: string): string {
+  if (name.startsWith('--')) return name;
+  return name.replace(/[A-Z]/g, (character) => `-${character.toLowerCase()}`);
+}
+
+function serializeStyle(
+  preset: BlurPreset,
+  placement: BlurPlacement | undefined,
+  style: Props['style'],
+): string {
+  if (typeof style === 'string') {
+    const defaults = Object.entries(presetLayout(preset, placement))
+      .map(([key, value]) => `${cssName(key)}:${value}`)
+      .join(';');
+    return `${defaults};${style}`;
+  }
+  const custom = (style && typeof style === 'object' ? style : {}) as StyleObject;
+  return Object.entries({ ...presetLayout(preset, placement), ...custom })
+    .filter(([, value]) => value !== undefined)
+    .map(([key, value]) => `${cssName(key)}:${value}`)
+    .join(';');
+}
+
+const {
+  preset = 'panel',
+  placement,
+  radius = 24,
+  transition = 48,
+  maxSamples = 32,
+  style,
+  ...props
+} = Astro.props;
 const options = JSON.stringify({ preset, placement, radius, transition, maxSamples });
-const layout = Object.entries(presetLayout(preset, placement)).map(([key, value]) => `${key.replace(/[A-Z]/g, c => `-${c.toLowerCase()}`)}:${value}`).join(';');
+const targetStyle = serializeStyle(preset, placement, style);
 ---
 <progressive-blur-host style="display:contents" data-options={options}>
-  <div {...props} data-blur-target style={typeof style === 'object' ? { ...presetLayout(preset, placement), ...style } : `${layout};${style ?? ''}`}><slot /></div>
+  <div {...props} data-blur-target="" style={targetStyle}><slot /></div>
 </progressive-blur-host>
 
 <script>
-  import { mountProgressiveBlur } from './lifecycle';
-  // A custom element handles normal navigation, ClientRouter swaps and removal.
-  if (!customElements.get('progressive-blur-host')) {
-    customElements.define('progressive-blur-host', class extends HTMLElement {
-      private dispose?: () => void;
-      private generation = 0;
-      connectedCallback() {
-        const generation = ++this.generation;
-        queueMicrotask(() => {
-          if (!this.isConnected || generation !== this.generation) return;
-          const target = this.querySelector<HTMLElement>(':scope > [data-blur-target]');
-          if (target) this.dispose = mountProgressiveBlur(target, JSON.parse(this.dataset.options ?? '{}'));
-        });
+  import {
+    mountProgressiveBlur,
+    type BlurMountHandle,
+  } from './lifecycle';
+  import type {
+    BlurPlacement,
+    BlurPreset,
+    ProgressiveBlurAttachOptions,
+  } from 'webgpu-progressive-blur/dom';
+
+  type RegisteredHost = {
+    handleBeforeSwap(): void;
+    handlePageLoad(): void;
+    handlePageHide(persisted: boolean): void;
+  };
+  type HostRegistry = {
+    hosts: Set<RegisteredHost>;
+    listenersInstalled: boolean;
+  };
+  type BrowserGlobal = typeof globalThis & {
+    __progressiveBlurHostRegistry?: HostRegistry;
+  };
+
+  const browserGlobal = globalThis as BrowserGlobal;
+  const registry =
+    browserGlobal.__progressiveBlurHostRegistry ??= {
+      hosts: new Set<RegisteredHost>(),
+      listenersInstalled: false,
+    };
+
+  const allowedPlacements: Record<BlurPreset, readonly BlurPlacement[]> = {
+    navbar: ['top'],
+    sidebar: ['left', 'right'],
+    'bottom-bar': ['bottom'],
+    caption: ['bottom', 'top'],
+    edge: ['top', 'right', 'bottom', 'left'],
+    panel: ['top'],
+  };
+  const knownPresets = new Set<BlurPreset>(Object.keys(allowedPlacements) as BlurPreset[]);
+  const knownPlacements = new Set<BlurPlacement>(['top', 'right', 'bottom', 'left']);
+
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+  }
+
+  function parseOptions(value: string): ProgressiveBlurAttachOptions {
+    const parsed: unknown = JSON.parse(value);
+    if (!isRecord(parsed)) throw new TypeError('data-options must be a JSON object.');
+    const preset = parsed.preset;
+    if (typeof preset !== 'string' || !knownPresets.has(preset as BlurPreset))
+      throw new TypeError('data-options contains an invalid preset.');
+    const placement = parsed.placement;
+    if (
+      placement !== undefined &&
+      (typeof placement !== 'string' || !knownPlacements.has(placement as BlurPlacement))
+    )
+      throw new TypeError('data-options contains an invalid placement.');
+    if (
+      placement !== undefined &&
+      !(allowedPlacements[preset as BlurPreset] as readonly string[]).includes(placement as string)
+    )
+      throw new RangeError('data-options contains a placement incompatible with its preset.');
+    for (const key of ['radius', 'transition', 'maxSamples'] as const) {
+      const number = parsed[key];
+      if (typeof number !== 'number' || !Number.isFinite(number) || number < 0)
+        throw new TypeError(`data-options contains an invalid ${key}.`);
+    }
+    return {
+      preset: preset as BlurPreset,
+      placement: placement as BlurPlacement | undefined,
+      radius: parsed.radius as number,
+      transition: parsed.transition as number,
+      maxSamples: parsed.maxSamples as number,
+    };
+  }
+
+  function emitError(target: HTMLElement, error: unknown): void {
+    const reason = error instanceof Error ? error.message : String(error);
+    target.dataset.blurState = 'error';
+    target.dataset.blurReason = reason;
+    target.dispatchEvent(
+      new CustomEvent('progressive-blur:error', {
+        detail: error,
+        bubbles: true,
+      }),
+    );
+  }
+
+  class ProgressiveBlurHost extends HTMLElement implements RegisteredHost {
+    private handle?: BlurMountHandle;
+    private generation = 0;
+    private refreshTarget?: HTMLElement;
+
+    connectedCallback(): void {
+      registry.hosts.add(this);
+      this.scheduleMount();
+    }
+
+    disconnectedCallback(): void {
+      this.handleBeforeSwap();
+      registry.hosts.delete(this);
+    }
+
+    handleBeforeSwap(): void {
+      this.generation += 1;
+      this.dispose();
+    }
+
+    handlePageLoad(): void {
+      if (!this.isConnected) return;
+      if (this.handle) {
+        void this.handle.refresh().catch(() => undefined);
+        return;
       }
-      disconnectedCallback() { this.generation++; this.dispose?.(); this.dispose = undefined; }
+      this.scheduleMount();
+    }
+
+    handlePageHide(persisted: boolean): void {
+      if (persisted) this.handleBeforeSwap();
+    }
+
+    private scheduleMount(): void {
+      const generation = ++this.generation;
+      queueMicrotask(() => {
+        if (!this.isConnected || generation !== this.generation) return;
+        this.mount(generation);
+      });
+    }
+
+    private mount(generation: number): void {
+      const target = this.querySelector<HTMLElement>(':scope > [data-blur-target]');
+      if (!target) return;
+      let options: ProgressiveBlurAttachOptions;
+      try {
+        options = parseOptions(this.dataset.options ?? '{}');
+      } catch (error) {
+        emitError(target, error);
+        return;
+      }
+      this.refreshTarget = target;
+      target.addEventListener('progressive-blur:refresh', this.handleRefresh);
+      let handle: BlurMountHandle;
+      try {
+        handle = mountProgressiveBlur(target, options);
+      } catch (error) {
+        this.detachRefreshListener();
+        emitError(target, error);
+        return;
+      }
+      if (!this.isConnected || generation !== this.generation) {
+        handle.destroy();
+        this.detachRefreshListener();
+        return;
+      }
+      this.handle = handle;
+    }
+
+    private readonly handleRefresh = (): void => {
+      void this.handle?.refresh().catch(() => undefined);
+    };
+
+    private detachRefreshListener(): void {
+      this.refreshTarget?.removeEventListener('progressive-blur:refresh', this.handleRefresh);
+      this.refreshTarget = undefined;
+    }
+
+    private dispose(): void {
+      const handle = this.handle;
+      this.handle = undefined;
+      this.detachRefreshListener();
+      handle?.destroy();
+    }
+  }
+
+  if (!customElements.get('progressive-blur-host')) {
+    customElements.define('progressive-blur-host', ProgressiveBlurHost);
+  }
+
+  if (!registry.listenersInstalled) {
+    document.addEventListener('astro:before-swap', () => {
+      registry.hosts.forEach((host) => host.handleBeforeSwap());
     });
+    document.addEventListener('astro:page-load', () => {
+      registry.hosts.forEach((host) => host.handlePageLoad());
+    });
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) registry.hosts.forEach((host) => host.handlePageLoad());
+    });
+    window.addEventListener('pagehide', (event) => {
+      registry.hosts.forEach((host) => host.handlePageHide(event.persisted));
+    });
+    registry.listenersInstalled = true;
   }
 </script>

@@ -1,5 +1,14 @@
 # 更新记录
 
+## 0.2.0 — 未发布
+
+- 新增 `webgpu-progressive-blur add` 源码组件 CLI，支持 React / Astro、单个/多个/全部预设、`--dir`、`--dry-run`、`--no-install` 和安全的已有文件保护。
+- React 模板支持 React 18/19 兼容的 `forwardRef`、StrictMode 异步清理、参数重挂载和 `refreshKey`；Astro 模板支持普通页面、ClientRouter、`transition:persist`、BFCache 和可见错误状态。
+- 增加共享异步生命周期、受管导出索引、semver 运行时检查、消费项目 fixtures 和效果台纯函数代码生成。
+- 更新效果台、README 与路线图，明确本地可编辑源码不会随 npm 更新自动覆盖。
+
+此版本当前仍在发布验收阶段；npm registry 的 `latest` 仍为 `0.1.1`。
+
 ## 0.1.1 — 首次 npm 发布
 
 - 提供框架无关的 WebGPU 渐变模糊渲染器、DOM 挂载入口与 WGSL 导出。

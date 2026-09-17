@@ -1,0 +1,14 @@
+{
+  "name": "progressive-blur-fixture-astro-static",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "astro check",
+    "build": "astro build"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "astro": "5.18.2",
+    "typescript": "5.9.3"
+  }
+}

@@ -5,17 +5,12 @@ import {
   type ProgressiveBlurEffect,
   type ProgressiveBlurAttachOptions,
 } from "@webgpu-progressive-blur/dom";
-import { version } from "../../package.json";
-
-export interface ExperimentConfig {
-  shape: "circle" | "square";
-  radius: number;
-  size: number;
-  transition: number;
-  dx: number;
-  dy: number;
-  reverse: boolean;
-}
+import {
+  generateExample,
+  type ExperimentConfig,
+  type CodegenFramework,
+} from "./codegen";
+import { version as packageVersion } from "../../package.json";
 const presets: Record<
   BlurPreset,
   {
@@ -86,11 +81,13 @@ export function createPresetStudio(options: {
   let busy = false;
   let pending = false;
   let disposed = false;
+  let addAll = false;
   let displayedCode = "";
   let copyTimer: ReturnType<typeof setTimeout> | undefined;
   const component = $("#preset-component");
   const select = $<HTMLSelectElement>("#placement");
   const fade = $<HTMLInputElement>("#fade");
+  const addAllButton = $<HTMLButtonElement>("#add-all-presets");
 
   function isActive(): boolean {
     return selected !== "experiment";
@@ -108,87 +105,44 @@ export function createPresetStudio(options: {
 
   const frameworkSelect = $<HTMLSelectElement>("#code-framework");
   frameworkSelect.addEventListener("change", generateCode);
+  addAllButton.addEventListener("click", () => {
+    if (selected === "experiment") return;
+    addAll = !addAll;
+    generateCode();
+  });
 
   function generateCode(): void {
     const config = options.getExperiment();
-    const experiment = selected === "experiment";
-    const api = experiment
-      ? {
-          radius: config.radius,
-          maxSamples: 32,
-          profile:
-            config.shape === "circle"
-              ? {
-                  type: "radial",
-                  transition: config.transition / 100,
-                  reverse: config.reverse,
-                }
-              : {
-                  type: "directional",
-                  direction: [config.dx, config.dy],
-                  transition: config.transition / 100,
-                  reverse: config.reverse,
-                },
-        }
-      : configuration();
-    const js = `import { attachProgressiveBlur } from 'webgpu-progressive-blur/dom';\n\n// 在客户端、元素挂载后运行。背景需位于目标元素后方。\nconst element = document.querySelector('.blur-target');\nif (!(element instanceof HTMLElement)) throw new Error('Missing .blur-target');\n\nconst effect = await attachProgressiveBlur(element, ${JSON.stringify(api, null, 2)});\n\n// 背景内容变化后：await effect.refresh();\n// 组件卸载时：effect.destroy();\n// effect.status.state === 'unsupported' 时保留原页面。`;
-    const side = placement;
-    let geometry = "";
-    if (experiment)
-      geometry = `position: relative; width: ${config.size}vmin; height: ${config.size}vmin;${config.shape === "circle" ? " border-radius: 50%;" : ""}`;
-    else if (selected === "navbar")
-      geometry = "position: fixed; top: 0; left: 0; right: 0; height: 72px;";
-    else if (selected === "sidebar")
-      geometry = `position: fixed; ${side}: 0; top: 0; bottom: 0; width: 200px;`;
-    else if (selected === "bottom-bar")
-      geometry = "position: fixed; bottom: 0; left: 0; right: 0; height: 80px;";
-    else if (selected === "caption")
-      geometry = `position: absolute; ${side}: 0; left: 0; right: 0; min-height: 120px;`;
-    else if (selected === "edge")
-      geometry = `position: absolute; ${side}: 0; ${side === "top" || side === "bottom" ? "left: 0; right: 0; height: 16px;" : "top: 0; bottom: 0; width: 16px;"} pointer-events: none;`;
-    else
-      geometry =
-        "position: relative; width: min(320px, 90vw); min-height: 200px; border-radius: 16px;";
-    const html = `<!-- 放入你已有的页面；caption / edge 的父容器需 position: relative。 -->\n<div class="blur-target">\n  ${selected === "edge" ? "<!-- 装饰性边缘；内容放在后方的容器内。 -->" : "<!-- 在这里放置你的导航项、按钮或标题。 -->"}\n</div>\n\n<style>\n.blur-target {\n  ${geometry}\n  z-index: 10;\n  background: transparent;\n  color: white;\n  /* 保留渐隐延伸区域，避免 overflow: hidden。 */\n}\n</style>`;
-    displayedCode =
-      tab === "install"
-        ? `npm install webgpu-progressive-blur@${version}`
-        : tab === "js"
-          ? js
-          : html;
-    const framework = frameworkSelect.value;
-    const sourceMode = framework !== "dom" && !experiment;
+    const framework = frameworkSelect.value as CodegenFramework;
+    const generated = generateExample({
+      version: packageVersion,
+      framework,
+      preset: selected,
+      placement,
+      radius: config.radius,
+      transition,
+      maxSamples: 32,
+      experiment: config,
+      addAll,
+    });
+    const sourceMode = generated.mode === "source";
     $("#tab-js").textContent = sourceMode ? "02 组件用法" : "02 JavaScript";
     $("#tab-html").textContent = sourceMode ? "03 布局说明" : "03 HTML / CSS";
-    if (sourceMode) {
-      const name =
-        "ProgressiveBlur" +
-        selected
-          .split("-")
-          .map((part) => part[0].toUpperCase() + part.slice(1))
-          .join("");
-      const attributes = `radius={${config.radius}} transition={${selected === "panel" ? 0 : transition}} placement="${placement}"`;
-      const usage =
-        framework === "react"
-          ? `import { ${name} } from './components/progressive_blur';\n\nexport default function Example() {\n  return (\n    <${name} ${attributes}>\n      {/* 放置导航、标题或按钮；背景内容放在组件后方。 */}\n    </${name}>\n  );\n}`
-          : `---\nimport ${name} from './components/progressive_blur/progressive-blur-${selected}.astro';\n---\n\n<${name} ${attributes}>\n  <!-- 放置导航、标题或按钮；背景内容放在组件后方。 -->\n</${name}>`;
-      displayedCode =
-        tab === "install"
-          ? `npx webgpu-progressive-blur@${version} add ${selected} --framework ${framework}`
-          : tab === "js"
-            ? usage
-            : `// 默认写入 src/components/progressive_blur（没有 src 时写入 components）。\n// 按当前页面位置调整 import 的相对路径。\n// 组件已带基础布局，可修改源码或传入 ${framework === "react" ? "className / style" : "class / style"}。\n// caption / edge 的父容器需 position: relative。\n// 不要用 overflow: hidden 裁掉组件的渐隐外延。\n// 生命周期已由组件管理。`;
-    }
+    displayedCode =
+      tab === "install"
+        ? generated.install
+        : tab === "js"
+          ? generated.usage
+          : generated.notes;
     $("#generated-code").textContent = displayedCode;
-    $("#code-note").textContent = experiment
-      ? "形状与渐变参数会复制；此 DOM 示例保留前景文字清晰。尺寸与位置在 HTML / CSS 中调整。"
-      : sourceMode
-        ? "源码可直接修改。CLI 自动安装内核依赖；已有文件默认保留。示例中的 import 路径请按页面位置调整。"
-        : "在客户端挂载后初始化；组件卸载时调用 effect.destroy()。背景更新后调用 refresh()。";
+    $("#code-note").textContent = generated.notes;
+    addAllButton.textContent = addAll ? "安装全部预设（已选择）" : "添加全部预设";
   }
 
   function sync(): void {
     const experiment = selected === "experiment";
+    addAllButton.hidden = experiment;
+    frameworkSelect.disabled = experiment;
     for (const element of document.querySelectorAll<HTMLElement>(
       ".experiment-controls",
     ))
@@ -314,6 +268,7 @@ export function createPresetStudio(options: {
     .forEach((button) =>
       button.addEventListener("click", () => {
         selected = button.dataset.preset as typeof selected;
+        addAll = false;
         if (selected !== "experiment")
           placement = presets[selected].placements[0];
         options.schedule();

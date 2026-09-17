@@ -47,17 +47,6 @@ function output(root: string, directory = "src/components/progressive_blur") {
   return join(root, directory);
 }
 
-function installRecord(manifestPath: string, mutate?: (manifest: any) => void) {
-  return (...args: unknown[]) => {
-    if (mutate) {
-      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-      mutate(manifest);
-      writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-    }
-    return { status: 0, args };
-  };
-}
-
 function installRuntime(root: string, version = minimumVersion()) {
   mkdirSync(join(root, "node_modules/webgpu-progressive-blur"), {
     recursive: true,
@@ -215,6 +204,13 @@ describe("source component CLI", () => {
     expect(() => addComponents(["add", "--no-install"], file)).toThrow(
       /regular directory/,
     );
+
+    const srcLink = project();
+    rmSync(join(srcLink, "src"), { recursive: true, force: true });
+    symlinkSync(tmpdir(), join(srcLink, "src"));
+    expect(() => addComponents(["add", "--no-install"], srcLink)).toThrow(
+      /src path/,
+    );
   });
 
   it("dry-runs with zero writes and zero package-manager calls", () => {
@@ -263,7 +259,7 @@ describe("source component CLI", () => {
   });
 
   it("keeps a compatible production runtime without silently upgrading it", () => {
-    const root = project({ dependencies: { react: "^19.0.0", ["webgpu-progressive-blur"]: "^0.1.1" } });
+    const root = project({ dependencies: { react: "^19.0.0", ["webgpu-progressive-blur"]: ">=0.1.0" } });
     installRuntime(root);
     const calls: unknown[][] = [];
     addComponents(["add", "navbar"], root, (...args) => {
@@ -280,14 +276,25 @@ describe("source component CLI", () => {
     });
     installRuntime(root);
     const calls: unknown[][] = [];
-    addComponents(["add", "navbar"], root, installRecord(join(root, "package.json"), (manifest) => {
+    const installer = (...args: unknown[]) => {
+      calls.push(args);
+      const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
       manifest.dependencies["webgpu-progressive-blur"] = "^0.1.1";
       delete manifest.devDependencies["webgpu-progressive-blur"];
-    }));
-    expect(calls).toHaveLength(0);
+      writeFileSync(join(root, "package.json"), JSON.stringify(manifest, null, 2));
+      return { status: 0 };
+    };
+    const messages = addComponents(["add", "navbar"], root, installer);
+    expect(calls[0].slice(0, 2)).toEqual([
+      "npm",
+      ["install", "--save", "webgpu-progressive-blur@^0.1.1"],
+    ]);
     const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
     expect(manifest.dependencies["webgpu-progressive-blur"]).toBe("^0.1.1");
     expect(manifest.devDependencies?.["webgpu-progressive-blur"]).toBeUndefined();
+    expect(messages.join("\n")).toContain(
+      "Installed: webgpu-progressive-blur@^0.1.1",
+    );
   });
 
   it("stops on a runtime below the minimum before writing", () => {

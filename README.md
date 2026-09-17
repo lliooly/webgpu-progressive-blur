@@ -4,9 +4,9 @@
 
 基于 **TypeScript、WebGPU 和 WGSL** 的渐变模糊库。让模糊强度随位置连续变化：从中心向外逐渐清晰、从一侧向另一侧过渡，或通过自定义遮罩定义模糊区域。
 
-仓库同时提供一个可交互的预设效果台：选择导航栏、侧栏等场景，调整参数，直接复制安装命令、JavaScript 和 HTML / CSS 接入代码。预览与接入代码使用同一套公开 API。核心库无框架绑定，可接入 Canvas、图像源或 DOM 界面。
+仓库同时提供一个可交互的预设效果台：选择导航栏、侧栏等场景，调整参数，选择 React、Astro 或原生 DOM，直接复制安装命令、组件用法和布局说明。预览与接入代码使用同一套公开 API。核心库无框架绑定，可接入 Canvas、图像源或 DOM 界面。
 
-当前为 `0.1.1` 预览版本。算法参考 Inferno 的可变半径模糊，以 WGSL 重写；来源与授权见[致谢](#致谢)和 [第三方声明](THIRD_PARTY_NOTICES.md)。
+当前源码工作区版本为 `0.2.0`；npm registry 当前 latest 仍为 `0.1.1`，所以本文中带 `@0.2.0` 的 CLI 命令要在该版本发布后使用。算法参考 Inferno 的可变半径模糊，以 WGSL 重写；来源与授权见[致谢](#致谢)和 [第三方声明](THIRD_PARTY_NOTICES.md)。
 
 [效果预览](#效果预览) · [本地运行](#本地运行) · [在项目中使用](#在项目中使用) · [实现原理](#实现原理) · [部署](#部署) · [开发与验证](#开发与验证)
 
@@ -34,6 +34,7 @@
 - **实时参数**：模糊强度、形状大小、渐变范围。
 - **交互对比**：拖动模糊区域，或聚焦后用方向键移动；按住按钮查看原图，松开恢复。
 - **背景内容**：本地换图、文字开关和轮廓开关。选择的图片仅在浏览器内读取。
+- **源码分发**：选择 React / Astro，复制单个预设或全部预设的 `npx` 命令、组件用法和布局说明。
 - **响应式布局**：桌面为左右分栏，手机为上下布局。
 
 ## 本地运行
@@ -53,24 +54,27 @@ npm run dev
 
 ## 在项目中使用
 
-### 安装
+### 安装内核 vs 添加源码组件
 
 ```bash
+# 已发布版本：只安装框架无关的内核
 npm install webgpu-progressive-blur@0.1.1
 ```
+
+`npm install webgpu-progressive-blur` 只安装内核，不会向你的源码目录生成组件。React / Astro 源码组件由 `0.2.0` 及之后版本的 CLI 按需写入；组件源码归你的项目所有，之后执行 `npm update` 不会自动更新它们。
 
 如果需要使用工作区中的修改，也可以从源码打包。在本仓库执行：
 
 ```bash
 npm ci
 npm run build:lib
-npm pack
+npm pack --pack-destination /tmp
 ```
 
-当前版本会生成 `webgpu-progressive-blur-0.1.1.tgz`。在你的应用目录中安装生成的文件：
+当前源码会生成 `webgpu-progressive-blur-0.2.0.tgz`。在你的应用目录中安装生成的文件：
 
 ```bash
-npm install /path/to/webgpu-progressive-blur-0.1.1.tgz
+npm install /path/to/webgpu-progressive-blur-0.2.0.tgz
 ```
 
 包提供 3 个 ESM 入口，并附带 TypeScript 声明。新版 TypeScript 已包含 WebGPU 类型；如果旧版编译器提示无法识别 `GPUDevice` 等名称，可执行 `npm install -D @webgpu/types`，并在该项目的 `tsconfig.json` 的 `compilerOptions.types` 中追加 `"@webgpu/types"`。库不会强制注入全局类型，避免与新版 DOM 类型冲突。
@@ -83,7 +87,73 @@ npm install /path/to/webgpu-progressive-blur-0.1.1.tgz
 | `webgpu-progressive-blur/dom` | DOM 元素挂载、捕获与生命周期适配 |
 | `webgpu-progressive-blur/shaders` | 原始 WGSL 字符串 `variableBlurWgsl` |
 
-### 组件预设：从效果台到实际项目
+### React / Astro 源码组件
+
+发布 `0.2.0` 后，在应用根目录运行。当前预发布 tarball 验证使用 `--no-install`，以免向 registry 请求尚未发布的 `0.2.0`：
+
+```bash
+# 当前预设：只添加一个组件
+npx webgpu-progressive-blur@0.2.0 add navbar --framework react
+npx webgpu-progressive-blur@0.2.0 add navbar --framework astro
+
+# 不指定名称：添加全部六类组件；多个名称按首次出现顺序去重
+npx webgpu-progressive-blur@0.2.0 add --framework react
+npx webgpu-progressive-blur@0.2.0 add navbar sidebar --framework react
+
+# 预览、指定目录或跳过依赖安装
+npx webgpu-progressive-blur@0.2.0 add navbar --framework react --dry-run
+npx webgpu-progressive-blur@0.2.0 add navbar --framework astro --dir src/components/progressive_blur --no-install
+```
+
+CLI 优先识别显式 `--framework`，否则按 `astro` 再 `react` 检测当前 `package.json`。默认有 `src/` 时写入 `src/components/progressive_blur/`，没有时写入 `components/progressive_blur/`；`--dir` 只能指向应用根目录内的相对目录。它支持 npm、pnpm、Yarn 和 Bun，并从 `packageManager`、单一 lockfile 或 npm 默认值决定包管理器。
+
+生成目录包含基础组件、共享 `lifecycle.ts` / `layout.ts`、所选包装组件和 `index.ts`。默认保留已有文件；`--force` 只覆盖本次涉及的文件，但也可能覆盖同目录中其他组件共用的生命周期和布局文件。索引使用受管导出区块，区块外的用户代码保留；重复、损坏或有歧义的索引会在写入前停止。安装失败不会删除已生成文件，CLI 会列出文件和重试命令。
+
+升级 npm 内核不会自动更新本地组件。要采用新版模板，请先检查用户修改，再用新的 CLI 执行 `--force`，或手动合并生成源码。
+
+React 示例（放入 `src/App.tsx`）：
+
+```tsx
+import { ProgressiveBlurNavbar } from './components/progressive_blur';
+
+export default function App() {
+  return (
+    <ProgressiveBlurNavbar radius={24} transition={48}>
+      <nav aria-label="主导航">我的导航内容</nav>
+    </ProgressiveBlurNavbar>
+  );
+}
+```
+
+Astro 示例（放入 `src/pages/index.astro`；文档优先展示直接导入 `.astro` 文件）：
+
+```astro
+---
+import ProgressiveBlurNavbar from '../components/progressive_blur/progressive-blur-navbar.astro';
+---
+
+<ProgressiveBlurNavbar radius={24} transition={48}>
+  <nav aria-label="主导航">我的导航内容</nav>
+</ProgressiveBlurNavbar>
+```
+
+通用基础组件的默认 `preset` 是 `panel`。包装组件会固定 preset 并收紧 `placement` 类型；`ProgressiveBlurPanel` 不暴露无意义的 `placement` / `transition`。React 组件透传原生 `div` 属性、`aria` / `data` 属性和事件，并用 `forwardRef` 暴露实际 `HTMLDivElement`。Astro 组件透传原生属性并使用默认 slot，不需要 React integration 或 `client:load`。
+
+通用 props：`radius` 默认 `24`，`transition` 默认 `48`（CSS px，panel 不增加渐隐外延），`maxSamples` 默认 `32`，以及受预设约束的 `placement`。React 另有 `refreshKey: string | number`；背景内容变化后改变它会等待当前挂载并重新捕获。Astro 给目标元素派发 `progressive-blur:refresh` 事件：
+
+```ts
+document.querySelector('#site-nav')?.dispatchEvent(
+  new CustomEvent('progressive-blur:refresh'),
+);
+```
+
+组件将状态写在实际 target 的 `data-blur-state`：`initializing`、`refreshing`、`ready`、`unsupported` 或 `error`。错误会派发可冒泡的 `progressive-blur:error`，前景内容不会因 WebGPU 不可用而消失。共享生命周期会串行化同一节点的异步挂载，处理 React StrictMode、参数重建、Astro 页面切换、持久节点和 BFCache 返回。
+
+默认布局由内联 style 提供，合并顺序为“默认内联 style → 用户 style”；普通 class 不能覆盖相同的内联属性。用户可以编辑生成的 `layout.ts`。默认背景透明，不强制 `overflow: hidden`；不透明背景或祖先裁剪可能遮挡/裁掉效果。`caption` / `edge` 的父容器需要合适的定位上下文。
+
+本轮只支持 React 和 Astro，不支持 Vue、Svelte、Solid 或 Angular。形状实验不生成 `add circle` 等不存在的 CLI 命令，继续通过原生 DOM API 导出。React fixture 已验证 React `18.3.1` 与 `19.3.0`；Astro fixture 已验证 Astro `5.18.2` 的静态页及 ClientRouter / `transition:persist`。尚未验证 Next.js，因此 README 不将 Next.js 列为正式支持范围。
+
+### 原生 DOM 组件预设
 
 在效果台选择场景，调整模糊强度和渐隐长度，然后依次复制「安装」「JavaScript」「HTML / CSS」。接入已有项目时，保留自己的布局和前景内容，将代码挂载到目标元素即可。
 
@@ -112,7 +182,7 @@ const effect = await attachProgressiveBlur(navbar, {
 
 `placement` 表示组件所在边缘，不是模糊方向；默认采用表格中的第一个位置。`transition` 是元素外部渐隐长度，单位为 CSS px，默认 `48`，可以为 `0`；`panel` 忽略渐隐长度。库自动生成并缓存遮罩，跟随尺寸变化更新。
 
-预设只提供效果，不创建导航项、按钮或布局。目标元素应有尺寸且背景透明；祖先的 `overflow: hidden` 可能裁掉外延，需要根据页面布局安排。前景文字保持清晰。React、Vue、Astro 等项目应在客户端挂载后初始化，卸载时调用 `destroy()`。
+预设只提供效果，不创建导航项、按钮或布局。目标元素应有尺寸且背景透明；祖先的 `overflow: hidden` 可能裁掉外延，需要根据页面布局安排。前景文字保持清晰。原生 DOM 接入应在客户端挂载后初始化并在卸载时调用 `destroy()`；React / Astro 源码组件会替你管理这段生命周期。
 
 `preset` 与 `profile`、`overlay.bleed` 不能同时设置。可以通过 `setParameters({ preset: 'sidebar', placement: 'right' })` 切换预设；切换预设或 profile 会安排异步刷新，若需等待完成则使用 `await effect.refresh()`。单独修改半径后仍需 `effect.render()`。
 
@@ -421,9 +491,12 @@ src/
   core/           设备、渲染器、参数编码、CPU 参考算法
   shaders/        WGSL 可变半径高斯模糊
   dom/            DOM 覆盖层、捕获与刷新生命周期
-examples/navbar/  效果调试台（沿用原目录名）
+cli/              React / Astro 源码组件 CLI 与模板读取
+templates/        共享生命周期、React 和 Astro 源码模板
+examples/navbar/  效果调试台与纯函数代码生成
 tests/
-  *.test.ts       CPU 参考算法与 DOM 配置单元测试
+  *.test.ts       CPU、DOM、CLI、生命周期与代码生成单元测试
+  fixtures/       独立 React / Astro 消费项目模板
   gpu/            浏览器 WebGPU 验证与读回对比
 docs/             设计文档、路线图与效果截图
 references/       保留授权信息的上游参考代码
@@ -436,6 +509,7 @@ references/       保留授权信息的上游参考代码
 | `npm run dev` | 启动调试台，支持热更新 |
 | `npm run typecheck` | TypeScript 类型检查 |
 | `npm test` | 运行 Vitest 单元测试 |
+| `npm run test:fixtures` | 从当前 tarball 验证 React 18/19 与 Astro 消费项目 |
 | `npm run test:watch` | 监听模式运行单元测试 |
 | `npm run test:gpu` | 启动真实浏览器 GPU 验证页 |
 | `npm run build:lib` | 只构建库 |
@@ -448,6 +522,7 @@ references/       保留授权信息的上游参考代码
 ```bash
 npm run typecheck
 npm test
+npm run test:fixtures
 npm run build
 npm run test:gpu
 ```

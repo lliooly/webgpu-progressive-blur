@@ -28,7 +28,7 @@ export const componentName = (name) =>
 function reactWrapper(name, preset) {
   const definition = presetDefinitions[preset];
   const omitted = ["preset", "placement"];
-  if (preset === "panel") omitted.push("placement", "transition");
+  if (definition.omitTransition) omitted.push("transition");
   const extendsType = `Omit<ProgressiveBlurProps, ${omitted
     .map((key) => `'${key}'`)
     .join(" | ")}>`;
@@ -45,7 +45,7 @@ function reactWrapper(name, preset) {
 function astroWrapper(name, preset) {
   const definition = presetDefinitions[preset];
   const omitted = ["preset", "placement"];
-  if (preset === "panel") omitted.push("placement", "transition");
+  if (definition.omitTransition) omitted.push("transition");
   const extendsType = `Omit<BaseProps, ${omitted
     .map((key) => `'${key}'`)
     .join(" | ")}>`;
@@ -56,10 +56,7 @@ function astroWrapper(name, preset) {
   const fixedPlacement = definition.fixedPlacement
     ? ` placement="${definition.fixedPlacement}"`
     : "";
-  const props =
-    preset === "panel"
-      ? `const { preset: _preset, placement: _placement, transition: _transition, ...props } = Astro.props;\n`
-      : "const props = Astro.props;\n";
+  const props = "const props = Astro.props;\n";
   return `---\nimport ProgressiveBlur, { type Props as BaseProps } from './progressive-blur.astro';\nexport interface Props extends ${extendsType} {\n${placement}}\n${props}---\n<ProgressiveBlur {...props} preset="${preset}"${fixedPlacement}><slot /></ProgressiveBlur>\n`;
 }
 

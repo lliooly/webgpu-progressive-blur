@@ -877,6 +877,15 @@ input:disabled {
   padding: 6px 10px;
   background: #fdfef9;
 }
+.code-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.code-actions button:first-child {
+  color: #4f6948;
+  background: #eef3e9;
+}
 .code-tabs {
   display: flex;
   gap: 20px;

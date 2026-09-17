@@ -56,11 +56,13 @@
     "build:demo": "vite build --config vite.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run --config vitest.config.ts",
+    "test:fixtures": "npm run build:lib && node scripts/verify-fixtures.mjs",
+    "release:check": "npm run typecheck && npm test && npm run test:fixtures && npm run build && npm pack --dry-run",
     "test:gpu": "vite --config vite.gpu.config.ts --host 127.0.0.1",
     "test:watch": "vitest --config vitest.config.ts",
     "pack:check": "npm run build && npm pack --dry-run",
     "prepack": "npm run build:lib",
-    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+    "prepublishOnly": "npm run release:check"
   },
   "devDependencies": {
     "@types/node": "^22.20.3",

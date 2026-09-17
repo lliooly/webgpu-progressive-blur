@@ -15,5 +15,6 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["@webgpu/types", "vite/client", "node"]
   },
-  "include": ["src", "tests", "examples", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "tests", "examples", "vite.config.ts", "vitest.config.ts"],
+  "exclude": ["tests/fixtures"]
 }
