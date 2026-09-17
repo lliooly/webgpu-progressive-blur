@@ -3,11 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#101219" />
+    <meta name="theme-color" content="#080a12" />
     <link rel="icon" href="data:," />
-    <title>Progressive Blur / Soft Focus Study</title>
+    <title>Progressive Blur / Orb Playground</title>
   </head>
   <body>
+    <canvas id="color-field" aria-hidden="true"></canvas>
+
     <div class="page-shell">
       <header class="site-nav" id="site-nav">
         <div class="nav-inner">
@@ -16,128 +18,109 @@
             <span>field / blur</span>
           </a>
           <nav class="nav-links" aria-label="Primary navigation">
-            <a class="active" href="#atmosphere">Atmosphere</a>
-            <a href="#fields">Fields</a>
-            <a href="#explore">Explore</a>
+            <a class="active" href="#orb-playground">Orb</a>
+            <a href="#palette">Palette</a>
+            <a href="#afterglow">Afterglow</a>
           </nav>
-          <span class="nav-index">01—04</span>
+          <span class="nav-index">01—03</span>
         </div>
       </header>
 
       <main id="top">
-        <section class="hero content-section">
-          <div class="eyebrow">soft focus / living depth</div>
-          <h1>Let the world<br /><em>move softly.</em></h1>
-          <p class="hero-copy">
-            Keep what matters close and let everything else settle into atmosphere.
-          </p>
-          <div class="hero-meta">
-            <span>Scroll to explore</span>
-            <span class="scroll-line" aria-hidden="true"><i></i></span>
-            <span>Adjust the mood</span>
-          </div>
-        </section>
-
-        <section class="marquee-band" aria-label="Blur mood statement">
-          <div class="marquee-track">
-            <span>soft focus</span><b>✳</b><span>clear type</span><b>✳</b>
-            <span>ambient depth</span><b>✳</b><span>soft focus</span><b>✳</b>
-          </div>
-        </section>
-
-        <section class="content-section split-section" id="atmosphere">
-          <div class="section-label">01 / atmosphere</div>
-          <div class="section-body">
-            <p class="section-kicker">A little less noise.</p>
-            <h2>Let the<br /><span>background</span><br />breathe.</h2>
-            <p class="section-copy">
-              Soft edges make room for the details in front. The page keeps moving,
-              while the things you came to read stay calm and close.
+        <section class="hero content-section" id="orb-playground">
+          <div class="hero-intro">
+            <div class="eyebrow">soft focus / living color</div>
+            <h1>Move through<br /><em>the glow.</em></h1>
+            <p class="hero-copy">
+              Drag the orb anywhere. The center stays clear while the edges dissolve
+              into the color around it.
             </p>
           </div>
-          <div class="atmosphere-card" aria-label="Soft focus composition">
-            <div class="atmosphere-orb atmosphere-orb-back"></div>
-            <div class="atmosphere-orb atmosphere-orb-front"></div>
-            <div class="atmosphere-card-copy">
-              <small>near / far</small>
-              <strong>space<br />to breathe</strong>
+
+          <div class="orb-stage" id="orb-stage" aria-label="Draggable blur orb playground">
+            <div class="stage-grid" aria-hidden="true"></div>
+            <div class="stage-marker stage-marker-top" aria-hidden="true">north / soft</div>
+            <div class="stage-marker stage-marker-right" aria-hidden="true">east / clear</div>
+            <div class="stage-marker stage-marker-bottom" aria-hidden="true">south / deep</div>
+            <div class="stage-marker stage-marker-left" aria-hidden="true">west / warm</div>
+
+            <div
+              class="blur-orb"
+              id="blur-orb"
+              role="button"
+              tabindex="0"
+              aria-label="Draggable blur orb. Use arrow keys to move it."
+            >
+              <div class="orb-shine" aria-hidden="true"></div>
+              <div class="orb-content">
+                <span class="orb-kicker">drag me</span>
+                <strong>all<br />directions</strong>
+                <span class="orb-note">clear center / soft edge</span>
+              </div>
             </div>
-            <div class="atmosphere-card-line" aria-hidden="true"></div>
+
+            <div class="stage-caption">
+              <span class="caption-line" aria-hidden="true"></span>
+              <span>Find the quiet spot</span>
+              <span class="caption-code">x / y</span>
+            </div>
+          </div>
+
+          <aside class="control-dock" aria-label="Blur controls">
+            <div class="dock-header">
+              <div>
+                <span class="dock-eyebrow">live controls</span>
+                <strong>blur / mood</strong>
+              </div>
+              <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+            </div>
+            <p class="status-message" id="gpu-status">Preparing the field…</p>
+            <div class="control-rule"></div>
+            <label class="control-row range-row">
+              <span>softness <output id="radius-value">16 px</output></span>
+              <input id="radius-control" type="range" min="0" max="40" step="0.5" value="16" />
+            </label>
+            <label class="control-row range-row">
+              <span>detail <output id="samples-value">15</output></span>
+              <input id="samples-control" type="range" min="1" max="32" step="1" value="15" />
+            </label>
+            <label class="toggle-row">
+              <input id="edge-control" type="checkbox" checked />
+              <span class="toggle-ui" aria-hidden="true"></span>
+              <span>crisp edges</span>
+            </label>
+            <button class="center-button" id="center-orb" type="button">Center the orb</button>
+            <div class="dock-footer">
+              <span>drag / move</span>
+              <span id="frame-value">ready</span>
+            </div>
+          </aside>
+        </section>
+
+        <section class="palette-section content-section" id="palette">
+          <div class="section-label">01 / palette</div>
+          <div class="palette-copy">
+            <p class="section-kicker">Color in motion.</p>
+            <h2>Every edge<br /><span>finds a new</span><br />atmosphere.</h2>
+            <p class="section-copy">
+              Let the orb cross the spectrum. Bright color, quiet type, and soft depth
+              make each position feel a little different.
+            </p>
+          </div>
+          <div class="color-ribbon" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i>
           </div>
         </section>
 
-        <section class="signal-grid content-section" id="fields">
-          <div class="section-label">02 / fields</div>
-          <article class="signal-card signal-card-large" data-demo-blur="uniform">
-            <span class="card-number">A</span>
-            <h3>More signal.<br /><em>Less noise.</em></h3>
-            <p>Words stay close. Color falls away softly.</p>
-          </article>
-          <article class="signal-card signal-card-tall">
-            <span class="card-number">B</span>
-            <div class="card-swatch"></div>
-            <p>A little distance changes the whole mood.</p>
-          </article>
-          <article class="signal-card signal-card-wide" data-demo-blur="linear">
-            <span class="card-number">C</span>
-            <p class="quote">“The blur should feel like atmosphere, not a sticker.”</p>
-            <span class="quote-byline">— working principle / 2026</span>
-          </article>
-        </section>
-
-        <section class="content-section notes-section" id="explore">
-          <div class="section-label">03 / explore</div>
-          <div class="notes-list">
-            <div><span>01</span><p>Scroll slowly and watch the focus travel with the page.</p></div>
-            <div><span>02</span><p>Move the controls to find your favorite amount of softness.</p></div>
-            <div><span>03</span><p>Try the edges: quiet, crisp, or somewhere in between.</p></div>
+        <section class="afterglow-section content-section" id="afterglow">
+          <div class="section-label">02 / afterglow</div>
+          <div class="afterglow-copy">
+            <p>Stay a little longer.</p>
+            <strong>Soft things<br /><em>keep moving.</em></strong>
           </div>
         </section>
       </main>
 
-      <aside class="control-dock" aria-label="Blur controls">
-        <div class="dock-header">
-          <div>
-            <span class="dock-eyebrow">live controls</span>
-            <strong>blur / mood</strong>
-          </div>
-          <span class="status-dot" id="status-dot" aria-hidden="true"></span>
-        </div>
-        <p class="status-message" id="gpu-status">Preparing the blur fields…</p>
-        <div class="control-rule"></div>
-        <label class="control-row">
-          <span>mood</span>
-          <select id="mode-control">
-            <option value="navbar">soft falloff</option>
-            <option value="reference">even focus</option>
-          </select>
-        </label>
-        <label class="control-row range-row">
-          <span>softness <output id="radius-value">16 px</output></span>
-          <input id="radius-control" type="range" min="0" max="40" step="0.5" value="16" />
-        </label>
-        <label class="control-row range-row">
-          <span>detail <output id="samples-value">15</output></span>
-          <input id="samples-control" type="range" min="1" max="32" step="1" value="15" />
-        </label>
-        <label class="control-row range-row gradient-only">
-          <span>focus start <output id="start-value">0%</output></span>
-          <input id="start-control" type="range" min="0" max="0.9" step="0.01" value="0" />
-        </label>
-        <label class="control-row range-row gradient-only">
-          <span>focus end <output id="end-value">100%</output></span>
-          <input id="end-control" type="range" min="0.1" max="1" step="0.01" value="1" />
-        </label>
-        <label class="toggle-row">
-          <input id="edge-control" type="checkbox" checked />
-          <span class="toggle-ui" aria-hidden="true"></span>
-          <span>crisp edges</span>
-        </label>
-        <div class="dock-footer">
-          <span>live field</span>
-          <span id="frame-value">ready</span>
-        </div>
-      </aside>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>
