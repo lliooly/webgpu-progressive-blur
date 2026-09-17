@@ -31,12 +31,23 @@ const maskCanvas = document.createElement('canvas');
 const sourceContext = sourceCanvas.getContext('2d', { alpha: false })!;
 const maskContext = maskCanvas.getContext('2d')!;
 
+type OutputMetrics = {
+  cssWidth: number;
+  cssHeight: number;
+  width: number;
+  height: number;
+  navHeight: number;
+};
+
 let renderer: ProgressiveBlurRenderer | undefined;
 let pixelRatio = Math.min(2, window.devicePixelRatio || 1);
 let pageSnapshot: HTMLCanvasElement | undefined;
 let renderFrame: number | undefined;
 let resizeFrame: number | undefined;
 let lastRenderAt = 0;
+let maskKey = '';
+let parametersDirty = true;
+let rendererSizeKey = '';
 
 function setStatus(state: 'pending' | 'ready' | 'fallback' | 'error', message: string): void {
   statusMessage.textContent = message;
@@ -44,10 +55,22 @@ function setStatus(state: 'pending' | 'ready' | 'fallback' | 'error', message: s
   statusDot.className = `status-dot ${state}`;
 }
 
-function currentGradient(): { start: number; end: number; direction: 'top-to-bottom' } {
+function getOutputMetrics(): OutputMetrics {
+  const outputRect = outputCanvas.getBoundingClientRect();
+  const cssWidth = Math.max(1, outputRect.width || window.innerWidth);
+  const cssHeight = Math.max(1, outputRect.height || nav.getBoundingClientRect().height);
   const navHeight = Math.max(1, nav.getBoundingClientRect().height);
-  const outputHeight = Math.max(1, outputCanvas.getBoundingClientRect().height);
-  const visibleRatio = Math.min(1, navHeight / outputHeight);
+  return {
+    cssWidth,
+    cssHeight,
+    width: Math.max(1, Math.round(cssWidth * pixelRatio)),
+    height: Math.max(1, Math.round(cssHeight * pixelRatio)),
+    navHeight,
+  };
+}
+
+function currentGradient(metrics: OutputMetrics): { start: number; end: number; direction: 'top-to-bottom' } {
+  const visibleRatio = Math.min(1, metrics.navHeight / metrics.cssHeight);
   const start = Number(startControl.value) * visibleRatio;
   const end = Math.max(Number(endControl.value), Number(startControl.value) + 0.01) * visibleRatio;
   return {
@@ -80,14 +103,12 @@ async function capturePageSnapshot(): Promise<void> {
   pageSnapshot = snapshot;
 }
 
-function drawSourceSlice(): void {
-  const navHeight = Math.max(1, nav.getBoundingClientRect().height);
-  const width = Math.max(1, Math.round(window.innerWidth * pixelRatio));
-  const outputHeight = Math.max(1, outputCanvas.getBoundingClientRect().height);
-  const height = Math.max(1, Math.round(outputHeight * pixelRatio));
-  if (sourceCanvas.width !== width || sourceCanvas.height !== height) {
-    sourceCanvas.width = width;
-    sourceCanvas.height = height;
+function drawSourceSlice(): OutputMetrics {
+  const metrics = getOutputMetrics();
+  const { width, height } = metrics;
+  if (sourceCanvas.width !== metrics.width || sourceCanvas.height !== metrics.height) {
+    sourceCanvas.width = metrics.width;
+    sourceCanvas.height = metrics.height;
   }
 
   const sourceY = pageSnapshot
@@ -101,16 +122,40 @@ function drawSourceSlice(): void {
     sourceContext.fillRect(0, 0, width, height);
   }
 
-  maskCanvas.width = width;
-  maskCanvas.height = height;
-  const visibleRatio = Math.min(1, navHeight / outputHeight);
-  const gradientStart = Number(startControl.value) * visibleRatio;
-  const gradientEnd = Math.max(Number(endControl.value), Number(startControl.value) + 0.01) * visibleRatio;
-  const gradient = maskContext.createLinearGradient(0, height * gradientStart, 0, height * gradientEnd);
-  gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-  maskContext.fillStyle = gradient;
-  maskContext.fillRect(0, 0, width, height);
+  if (modeControl.value === 'reference') {
+    const visibleRatio = Math.min(1, metrics.navHeight / metrics.cssHeight);
+    const gradientStart = Number(startControl.value) * visibleRatio;
+    const gradientEnd = Math.max(Number(endControl.value), Number(startControl.value) + 0.01) * visibleRatio;
+    const nextMaskKey = [
+      metrics.width,
+      metrics.height,
+      metrics.cssHeight,
+      metrics.navHeight,
+      gradientStart,
+      gradientEnd,
+    ].join(':');
+    if (
+      maskKey !== nextMaskKey ||
+      maskCanvas.width !== metrics.width ||
+      maskCanvas.height !== metrics.height
+    ) {
+      maskCanvas.width = metrics.width;
+      maskCanvas.height = metrics.height;
+      const gradient = maskContext.createLinearGradient(
+        0,
+        metrics.height * gradientStart,
+        0,
+        metrics.height * gradientEnd,
+      );
+      gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+      gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      maskContext.fillStyle = gradient;
+      maskContext.fillRect(0, 0, metrics.width, metrics.height);
+      maskKey = nextMaskKey;
+      renderer?.invalidateMask();
+    }
+  }
+  return metrics;
 }
 
 function updateControlLabels(changed?: 'start' | 'end'): void {
@@ -135,18 +180,43 @@ function updateControlLabels(changed?: 'start' | 'end'): void {
   });
 }
 
+function syncRendererSize(metrics: OutputMetrics): void {
+  if (!renderer) return;
+  const nextSizeKey = `${metrics.width}:${metrics.height}:${pixelRatio}`;
+  if (
+    rendererSizeKey === nextSizeKey &&
+    renderer.width === metrics.width &&
+    renderer.height === metrics.height &&
+    renderer.pixelRatio === pixelRatio
+  ) {
+    return;
+  }
+  if (
+    renderer.width !== metrics.width ||
+    renderer.height !== metrics.height ||
+    renderer.pixelRatio !== pixelRatio
+  ) {
+    renderer.resize(metrics.cssWidth, metrics.cssHeight, pixelRatio);
+  }
+  rendererSizeKey = nextSizeKey;
+}
+
 function renderNow(): void {
   if (!renderer) return;
   const startedAt = performance.now();
-  drawSourceSlice();
-  renderer.setParameters({
-    mode: modeControl.value as BlurMode,
-    radius: Number(radiusControl.value),
-    maxSamples: Number(samplesControl.value),
-    verticalPassFirst: orderControl.checked,
-    normalizeEdges: edgeControl.checked,
-    gradient: currentGradient(),
-  });
+  const metrics = drawSourceSlice();
+  syncRendererSize(metrics);
+  if (parametersDirty) {
+    renderer.setParameters({
+      mode: modeControl.value as BlurMode,
+      radius: Number(radiusControl.value),
+      maxSamples: Number(samplesControl.value),
+      verticalPassFirst: orderControl.checked,
+      normalizeEdges: edgeControl.checked,
+      gradient: currentGradient(metrics),
+    });
+    parametersDirty = false;
+  }
   renderer.render();
   lastRenderAt = performance.now() - startedAt;
   frameValue.textContent = `CPU ${lastRenderAt.toFixed(1)} ms`;
@@ -165,10 +235,11 @@ function handleResize(): void {
   resizeFrame = requestAnimationFrame(() => {
     resizeFrame = undefined;
     pixelRatio = Math.min(2, window.devicePixelRatio || 1);
-    renderer?.resize(window.innerWidth, outputCanvas.getBoundingClientRect().height, pixelRatio);
+    parametersDirty = true;
+    rendererSizeKey = '';
+    maskKey = '';
     void capturePageSnapshot()
       .then(() => {
-        drawSourceSlice();
         scheduleRender();
       })
       .catch((error: unknown) => {
@@ -183,11 +254,13 @@ function bindControls(): void {
     control.addEventListener('input', () => {
       const changed = control === startControl ? 'start' : control === endControl ? 'end' : undefined;
       updateControlLabels(changed);
+      parametersDirty = true;
       scheduleRender();
     });
     control.addEventListener('change', () => {
       const changed = control === startControl ? 'start' : control === endControl ? 'end' : undefined;
       updateControlLabels(changed);
+      parametersDirty = true;
       scheduleRender();
     });
   });
@@ -208,7 +281,6 @@ async function boot(): Promise<void> {
   try {
     setStatus('pending', 'Capturing the page behind the navigation…');
     await capturePageSnapshot();
-    drawSourceSlice();
     renderer = await createProgressiveBlur({
       canvas: outputCanvas,
       source: sourceCanvas,
@@ -219,7 +291,9 @@ async function boot(): Promise<void> {
       verticalPassFirst: true,
       normalizeEdges: true,
       pixelRatio,
-      gradient: currentGradient(),
+      canvasUploadMode: 'external',
+      cacheMask: true,
+      gradient: currentGradient(getOutputMetrics()),
     });
     setStatus('ready', 'WebGPU active — scroll to move the source texture.');
     renderNow();
@@ -231,7 +305,6 @@ async function boot(): Promise<void> {
 }
 
 window.addEventListener('scroll', () => {
-  drawSourceSlice();
   scheduleRender();
 }, { passive: true });
 window.addEventListener('resize', handleResize, { passive: true });

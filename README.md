@@ -59,6 +59,8 @@ const blur = await createProgressiveBlur({
   maxSamples: 15,
   verticalPassFirst: true,
   normalizeEdges: true,
+  // 仅当 sourceCanvas 是不透明内容时启用，避免 CPU 回读。
+  canvasUploadMode: 'external',
   gradient: {
     start: 0,
     end: 1,
@@ -73,6 +75,8 @@ blur.destroy();
 ```
 
 `source` 的尺寸应与 renderer 当前的物理尺寸一致。画布尺寸变化后，先调用 `resize`，再更新源纹理并渲染。
+
+Canvas 源默认使用 `canvasUploadMode: 'readback'`，通过 2D 回读保留已有的 alpha 兼容行为；确认源画布是不透明内容时，可以显式设置为 `'external'`，让浏览器直接执行 `copyExternalImageToTexture()`。`cacheMask: true` 可以缓存非 GPU 的 reference mask；如果调用方原地修改了 mask，需要随后调用 `invalidateMask()`。
 
 ## 渲染模式
 
@@ -126,6 +130,7 @@ adapter.destroy();
 - `createProgressiveBlur(options)`：创建异步 WebGPU renderer。
 - `setSource(source)`：替换源纹理或外部图像。
 - `setMask(mask)`：替换或清除 `reference` 模式使用的 Alpha mask。
+- `invalidateMask()`：通知启用缓存的非 GPU mask 在下一帧重新上传。
 - `setParameters(parameters)`：更新半径、采样数、模式、渐变和 pass 顺序。
 - `resize(cssWidth, cssHeight, pixelRatio)`：按 CSS 尺寸重新配置输出和中间纹理。
 - `render()`：提交当前帧的两遍渲染。

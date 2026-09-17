@@ -16,6 +16,7 @@ export type {
   BlurState,
   BlurStatus,
   CanvasTarget,
+  CanvasUploadMode,
   ProgressiveBlurOptions,
   ProgressiveBlurRenderer as ProgressiveBlurRendererContract,
   WebGPUCapability,

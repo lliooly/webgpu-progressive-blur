@@ -1,4 +1,5 @@
 import {
+  createBlurBindGroup,
   createBlurPipeline,
   createBlurShaderModule,
   encodeBlurPass,
@@ -19,6 +20,7 @@ import type {
   BlurSource,
   BlurStatus,
   CanvasTarget,
+  CanvasUploadMode,
   ProgressiveBlurOptions,
   ProgressiveBlurRenderer as ProgressiveBlurRendererContract,
 } from './types.js';
@@ -119,6 +121,12 @@ type Canvas2DSource = {
   getContext: (contextId: '2d') => CanvasRenderingContext2D | null;
 };
 
+type BindGroupCache = {
+  sourceTexture: GPUTexture;
+  maskTexture: GPUTexture;
+  bindGroup: GPUBindGroup;
+};
+
 function getCanvas2DSource(source: BlurSource): Canvas2DSource | undefined {
   if (typeof source !== 'object' || source === null) return undefined;
   const candidate = source as Partial<Canvas2DSource>;
@@ -137,6 +145,8 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
   private readonly intermediatePipeline: GPURenderPipeline;
   private readonly outputPipeline: GPURenderPipeline;
   private readonly adapter?: GPUAdapter;
+  private readonly canvasUploadMode: CanvasUploadMode;
+  private readonly cacheMask: boolean;
 
   private intermediateTexture: GPUTexture | undefined;
   private sourceUploadTexture: GPUTexture | undefined;
@@ -149,6 +159,10 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
   private _pixelRatio = 1;
   private _status: BlurStatus = { supported: true, state: 'ready' };
   private _parameters: BlurParameters;
+  private maskUploadDirty = true;
+  private maskUploadSource: BlurSource | undefined;
+  private intermediateBindGroup: BindGroupCache | undefined;
+  private outputBindGroup: BindGroupCache | undefined;
 
   private constructor(
     canvas: CanvasTarget,
@@ -163,6 +177,8 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     this.context = context;
     this.outputFormat = outputFormat;
     this.adapter = adapter;
+    this.canvasUploadMode = options.canvasUploadMode ?? 'readback';
+    this.cacheMask = options.cacheMask ?? false;
     this._parameters = normalizeParameters(options);
     this.source = options.source;
     this.mask = options.mask;
@@ -262,11 +278,20 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
   setSource(source: BlurSource): void {
     this.ensureUsable();
     this.source = source;
+    this.invalidateBindGroups();
   }
 
   setMask(mask: BlurSource | undefined): void {
     this.ensureUsable();
     this.mask = mask;
+    this.maskUploadDirty = true;
+    this.maskUploadSource = undefined;
+    this.invalidateBindGroups();
+  }
+
+  invalidateMask(): void {
+    this.ensureUsable();
+    this.maskUploadDirty = true;
   }
 
   setParameters(parameters: Partial<ProgressiveBlurOptions>): void {
@@ -293,6 +318,17 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     const width = Math.max(1, Math.round(cssWidth * safePixelRatio));
     const height = Math.max(1, Math.round(cssHeight * safePixelRatio));
 
+    if (
+      this.intermediateTexture &&
+      width === this._width &&
+      height === this._height &&
+      safePixelRatio === this._pixelRatio &&
+      this.canvas.width === width &&
+      this.canvas.height === height
+    ) {
+      return;
+    }
+
     this._pixelRatio = safePixelRatio;
     this._width = width;
     this._height = height;
@@ -307,6 +343,9 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     this.destroyTexture(this.intermediateTexture);
     this.destroyTexture(this.sourceUploadTexture);
     this.destroyTexture(this.maskUploadTexture);
+    this.invalidateBindGroups();
+    this.maskUploadDirty = true;
+    this.maskUploadSource = undefined;
     this.intermediateTexture = this.device.createTexture({
       size: { width, height },
       format: 'rgba16float',
@@ -315,12 +354,18 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     this.sourceUploadTexture = this.device.createTexture({
       size: { width, height },
       format: 'rgba8unorm',
-      usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING,
+      usage:
+        GPUTextureUsage.COPY_DST |
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.RENDER_ATTACHMENT,
     });
     this.maskUploadTexture = this.device.createTexture({
       size: { width, height },
       format: 'rgba8unorm',
-      usage: GPUTextureUsage.COPY_DST | GPUTextureUsage.TEXTURE_BINDING,
+      usage:
+        GPUTextureUsage.COPY_DST |
+        GPUTextureUsage.TEXTURE_BINDING |
+        GPUTextureUsage.RENDER_ATTACHMENT,
     });
   }
 
@@ -347,6 +392,7 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
       firstAxis,
       maskTexture,
       this.uniformBuffers[0],
+      'intermediate',
     );
     this.renderPass(
       commandEncoder,
@@ -356,6 +402,7 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
       secondAxis,
       maskTexture,
       this.uniformBuffers[1],
+      'output',
     );
 
     this.device.queue.submit([commandEncoder.finish()]);
@@ -367,6 +414,7 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     this.destroyTexture(this.sourceUploadTexture);
     this.destroyTexture(this.maskUploadTexture);
     this.destroyTexture(this.defaultMaskTexture);
+    this.invalidateBindGroups();
     this.uniformBuffers[0].destroy();
     this.uniformBuffers[1].destroy();
     this._status = { supported: true, state: 'destroyed' };
@@ -382,7 +430,15 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     axis: number,
     maskTexture: GPUTexture,
     uniformBuffer: GPUBuffer,
+    cacheKey: 'intermediate' | 'output',
   ): void {
+    const bindGroup = this.getCachedBindGroup(
+      cacheKey,
+      sourceTexture,
+      maskTexture,
+      pipeline,
+      uniformBuffer,
+    );
     encodeBlurPass({
       device: this.device,
       commandEncoder,
@@ -400,7 +456,48 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
         axis,
         parameters: this._parameters,
       }),
+      bindGroup,
     });
+  }
+
+  private getCachedBindGroup(
+    cacheKey: 'intermediate' | 'output',
+    sourceTexture: GPUTexture,
+    maskTexture: GPUTexture,
+    pipeline: GPURenderPipeline,
+    uniformBuffer: GPUBuffer,
+  ): GPUBindGroup {
+    const cached = cacheKey === 'intermediate'
+      ? this.intermediateBindGroup
+      : this.outputBindGroup;
+    if (
+      cached?.sourceTexture === sourceTexture &&
+      cached.maskTexture === maskTexture
+    ) {
+      return cached.bindGroup;
+    }
+
+    const bindGroup = createBlurBindGroup({
+      device: this.device,
+      sourceTexture,
+      pipeline,
+      maskTexture,
+      sampler: this.sampler,
+      maskSampler: this.maskSampler,
+      uniformBuffer,
+    });
+    const next = { sourceTexture, maskTexture, bindGroup };
+    if (cacheKey === 'intermediate') {
+      this.intermediateBindGroup = next;
+    } else {
+      this.outputBindGroup = next;
+    }
+    return bindGroup;
+  }
+
+  private invalidateBindGroups(): void {
+    this.intermediateBindGroup = undefined;
+    this.outputBindGroup = undefined;
   }
 
   private resolveSourceTexture(source: BlurSource): GPUTexture {
@@ -408,7 +505,10 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     if (!this.sourceUploadTexture) {
       throw new Error('The source upload texture has not been initialized.');
     }
-    if (this.uploadCanvasPixels(source, this.sourceUploadTexture)) {
+    if (
+      this.canvasUploadMode === 'readback' &&
+      this.uploadCanvasPixels(source, this.sourceUploadTexture)
+    ) {
       return this.sourceUploadTexture;
     }
     this.device.queue.copyExternalImageToTexture(
@@ -425,7 +525,19 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     if (!this.maskUploadTexture) {
       throw new Error('The mask upload texture has not been initialized.');
     }
-    if (this.uploadCanvasPixels(mask, this.maskUploadTexture)) {
+    if (
+      this.cacheMask &&
+      this.maskUploadSource === mask &&
+      !this.maskUploadDirty
+    ) {
+      return this.maskUploadTexture;
+    }
+    if (
+      this.canvasUploadMode === 'readback' &&
+      this.uploadCanvasPixels(mask, this.maskUploadTexture)
+    ) {
+      this.maskUploadSource = mask;
+      this.maskUploadDirty = false;
       return this.maskUploadTexture;
     }
     this.device.queue.copyExternalImageToTexture(
@@ -433,6 +545,8 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
       { texture: this.maskUploadTexture, premultipliedAlpha: false },
       { width: this._width, height: this._height },
     );
+    this.maskUploadSource = mask;
+    this.maskUploadDirty = false;
     return this.maskUploadTexture;
   }
 
@@ -443,8 +557,8 @@ export class ProgressiveBlurRenderer implements ProgressiveBlurRendererContract 
     if (!context) return false;
 
     // Canvas-to-texture copies can lose the source alpha in Chrome. Reading a
-    // 2D canvas keeps opaque DOM snapshots opaque; other external sources use
-    // the zero-copy copyExternalImageToTexture path below.
+    // 2D canvas keeps opaque DOM snapshots opaque when the legacy readback
+    // mode is selected; external mode intentionally uses the zero-copy path.
     const imageData = context.getImageData(0, 0, this._width, this._height).data;
     const rowBytes = this._width * 4;
     const bytesPerRow = Math.ceil(rowBytes / 256) * 256;

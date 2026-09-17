@@ -36,6 +36,40 @@ export interface BlurPassResources {
   maskSampler: GPUSampler;
   uniformBuffer: GPUBuffer;
   uniformValues: Float32Array;
+  bindGroup?: GPUBindGroup;
+}
+
+export interface BlurBindGroupResources {
+  device: GPUDevice;
+  sourceTexture: GPUTexture;
+  pipeline: GPURenderPipeline;
+  maskTexture: GPUTexture;
+  sampler: GPUSampler;
+  maskSampler: GPUSampler;
+  uniformBuffer: GPUBuffer;
+}
+
+export function createBlurBindGroup(resources: BlurBindGroupResources): GPUBindGroup {
+  const {
+    device,
+    sourceTexture,
+    pipeline,
+    maskTexture,
+    sampler,
+    maskSampler,
+    uniformBuffer,
+  } = resources;
+
+  return device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: sourceTexture.createView() },
+      { binding: 1, resource: sampler },
+      { binding: 2, resource: { buffer: uniformBuffer } },
+      { binding: 3, resource: maskTexture.createView() },
+      { binding: 4, resource: maskSampler },
+    ],
+  });
 }
 
 /** Encodes one Inferno-compatible separable blur pass. */
@@ -51,6 +85,7 @@ export function encodeBlurPass(resources: BlurPassResources): void {
     maskSampler,
     uniformBuffer,
     uniformValues,
+    bindGroup,
   } = resources;
 
   if (uniformValues.byteLength !== BLUR_UNIFORM_BYTE_SIZE) {
@@ -58,15 +93,14 @@ export function encodeBlurPass(resources: BlurPassResources): void {
   }
   device.queue.writeBuffer(uniformBuffer, 0, uniformValues);
 
-  const bindGroup = device.createBindGroup({
-    layout: pipeline.getBindGroupLayout(0),
-    entries: [
-      { binding: 0, resource: sourceTexture.createView() },
-      { binding: 1, resource: sampler },
-      { binding: 2, resource: { buffer: uniformBuffer } },
-      { binding: 3, resource: maskTexture.createView() },
-      { binding: 4, resource: maskSampler },
-    ],
+  const resolvedBindGroup = bindGroup ?? createBlurBindGroup({
+    device,
+    sourceTexture,
+    pipeline,
+    maskTexture,
+    sampler,
+    maskSampler,
+    uniformBuffer,
   });
 
   const pass = commandEncoder.beginRenderPass({
@@ -80,7 +114,7 @@ export function encodeBlurPass(resources: BlurPassResources): void {
     ],
   });
   pass.setPipeline(pipeline);
-  pass.setBindGroup(0, bindGroup);
+  pass.setBindGroup(0, resolvedBindGroup);
   pass.draw(3);
   pass.end();
 }

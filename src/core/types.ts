@@ -6,6 +6,8 @@ export type CanvasTarget = HTMLCanvasElement | OffscreenCanvas;
 
 export type BlurSource = GPUTexture | GPUCopyExternalImageSource;
 
+export type CanvasUploadMode = 'readback' | 'external';
+
 export interface BlurGradient {
   /** The normalized point where the gradient starts. */
   start?: number;
@@ -44,6 +46,10 @@ export interface ProgressiveBlurOptions {
   gradient?: BlurGradient;
   /** Explicit output format for a caller-owned canvas context. */
   format?: GPUTextureFormat;
+  /** How Canvas sources are uploaded. Readback preserves the legacy alpha path. */
+  canvasUploadMode?: CanvasUploadMode;
+  /** Cache non-GPU reference masks until setMask(), resize(), or invalidateMask(). */
+  cacheMask?: boolean;
 }
 
 export interface BlurParameters {
@@ -72,6 +78,7 @@ export interface ProgressiveBlurRenderer {
   readonly parameters: Readonly<BlurParameters>;
   setSource(source: BlurSource): void;
   setMask(mask: BlurSource | undefined): void;
+  invalidateMask(): void;
   setParameters(parameters: Partial<ProgressiveBlurOptions>): void;
   resize(cssWidth?: number, cssHeight?: number, pixelRatio?: number): void;
   render(): void;

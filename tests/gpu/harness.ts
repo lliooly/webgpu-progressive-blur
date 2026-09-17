@@ -442,10 +442,17 @@ async function runRendererCase(device: GPUDevice, pixelRatio: number): Promise<G
   const input = sourceContext.createImageData(width, height);
   input.data.set(rgbaBytes(source));
   sourceContext.putImageData(input, 0, 0);
+  const mask = quantizeMask(createGradientMask(width, height, { start: 0, end: 1 }));
+  const maskCanvas = new OffscreenCanvas(width, height);
+  const maskContext = maskCanvas.getContext('2d')!;
+  const maskInput = maskContext.createImageData(width, height);
+  maskInput.data.set(alphaMaskBytes(mask));
+  maskContext.putImageData(maskInput, 0, 0);
   const outputCanvas = new OffscreenCanvas(cssWidth, cssHeight);
   const renderer = await createProgressiveBlur({
     canvas: outputCanvas,
     source: sourceCanvas,
+    mask: maskCanvas,
     device,
     mode: 'navbar',
     radius: 3,
@@ -453,23 +460,30 @@ async function runRendererCase(device: GPUDevice, pixelRatio: number): Promise<G
     maxSamples: 15,
     verticalPassFirst: true,
     gradient: { start: 0, end: 1 },
+    canvasUploadMode: 'external',
   });
   const readback = new OffscreenCanvas(width, height).getContext('2d')!;
   let maxAbsoluteError = 0;
   let sumAbsoluteError = 0;
   let finite = true;
   // Zero radius checks exact scaling/coordinates; nonzero checks both axes.
-  for (const radius of [0, 3]) {
-    renderer.setParameters({ radius });
+  const checks: Array<{ radius: number; mode: 'navbar' | 'reference' }> = [
+    { radius: 0, mode: 'navbar' },
+    { radius: 3, mode: 'navbar' },
+    { radius: 3, mode: 'reference' },
+  ];
+  for (const check of checks) {
+    renderer.setParameters({ radius: check.radius, mode: check.mode });
     renderer.render();
     await device.queue.onSubmittedWorkDone();
     readback.drawImage(outputCanvas, 0, 0);
     const actual = readback.getImageData(0, 0, width, height).data;
     const expected = progressiveBlurReference(source, width, height, {
-      radius: radius * pixelRatio,
+      radius: check.radius * pixelRatio,
       maxSamples: 15,
+      mask: check.mode === 'reference' ? mask : undefined,
+      gradient: check.mode === 'navbar' ? { start: 0, end: 1 } : undefined,
       verticalPassFirst: true,
-      gradient: { start: 0, end: 1 },
     });
     for (let index = 0; index < actual.length; index += 1) {
       const error = Math.abs(actual[index] / 255 - expected[index]);
@@ -479,7 +493,7 @@ async function runRendererCase(device: GPUDevice, pixelRatio: number): Promise<G
     }
   }
   renderer.destroy();
-  const meanAbsoluteError = sumAbsoluteError / (source.length * 2);
+  const meanAbsoluteError = sumAbsoluteError / (source.length * checks.length);
   return {
     name: `production-renderer-dpr-${pixelRatio}`,
     width,
