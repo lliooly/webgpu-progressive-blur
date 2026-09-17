@@ -15,7 +15,7 @@
 - 提供 `webgpu-progressive-blur/dom` 的 `attachProgressiveBlur()`，可直接应用到任意 DOM 元素并自动管理覆盖层。
 - 核心验收覆盖非方形纹理、横纵轴、渐进 mask、边界归一化、pass 顺序和 DPR 缩放。
 - 最近一次 Chrome WebGPU 验收共 10 个 case，全部通过；单 case 最大绝对误差为 `0.00231`，低于 `0.003` 阈值。
-- `examples/navbar` 使用页面快照模拟真实导航栏背景，并支持滚动、参数调节和 WebGPU fallback 状态。
+- `examples/navbar` 是左右布局的渐变模糊效果调试台，支持圆形径向渐变、方形八方向渐变、拖动、参数调节、本地换图与原图对比。
 - 真实博客项目的 DOM 捕获、跨域图片策略和最终画质仍需在目标站点单独验收。
 
 仓库已配置为可公开发布的 npm 包；是否执行 `npm publish` 由维护者在确认包名和发布时机后决定。
@@ -220,7 +220,7 @@ CPU 测试用于验证参考算法和边界行为；GPU harness 使用真实浏�
 - `src/core/`：设备、纹理、参数、渲染生命周期和 CPU 参考实现。
 - `src/shaders/`：内嵌 WGSL 渐进高斯采样 shader。
 - `src/dom/`：可选的 DOM 刷新、滚动和生命周期适配器。
-- `examples/navbar/`：可交互导航栏展示页。
+- `examples/navbar/`：可交互渐变模糊调试台（保留原有目录与启动入口）。
 - `tests/`：CPU 单元测试和真实浏览器 GPU 验收入口。
 - `docs/`：设计、验收记录和开发路线图。
 - `references/inferno/`：固定版本的上游参考源码与许可证。

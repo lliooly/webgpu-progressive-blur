@@ -1,127 +1,229 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#080a12" />
+    <meta name="theme-color" content="#f4f4f0" />
     <link rel="icon" href="data:," />
-    <title>Progressive Blur / Orb Playground</title>
+    <title>Progressive Blur — 效果调试台</title>
   </head>
   <body>
-    <canvas id="color-field" aria-hidden="true"></canvas>
-
-    <div class="page-shell">
-      <header class="site-nav" id="site-nav">
-        <div class="nav-inner">
-          <a class="wordmark" href="#top" aria-label="Progressive blur home">
-            <span class="wordmark-mark">◎</span>
-            <span>field / blur</span>
-          </a>
-          <nav class="nav-links" aria-label="Primary navigation">
-            <a class="active" href="#orb-playground">Orb</a>
-            <a href="#palette">Palette</a>
-            <a href="#afterglow">Afterglow</a>
-          </nav>
-          <span class="nav-index">01—03</span>
+    <main class="playground">
+      <aside class="sidebar" aria-label="效果控制">
+        <div class="brand">
+          <span class="brand-symbol" aria-hidden="true">◒</span>
+          <div>
+            <h1>Progressive Blur</h1>
+            <p>渐变模糊 · 效果调试台</p>
+          </div>
         </div>
-      </header>
-
-      <main id="top">
-        <section class="hero content-section" id="orb-playground">
-          <div class="hero-intro">
-            <div class="eyebrow">soft focus / living color</div>
-            <h1>Move through<br /><em>the glow.</em></h1>
-            <p class="hero-copy">
-              Drag the orb anywhere. The center stays clear while the edges dissolve
-              into the color around it.
-            </p>
-          </div>
-
-          <div class="orb-stage" id="orb-stage" aria-label="Draggable blur orb playground">
-            <div class="stage-grid" aria-hidden="true"></div>
-            <div class="stage-marker stage-marker-top" aria-hidden="true">north / soft</div>
-            <div class="stage-marker stage-marker-right" aria-hidden="true">east / clear</div>
-            <div class="stage-marker stage-marker-bottom" aria-hidden="true">south / deep</div>
-            <div class="stage-marker stage-marker-left" aria-hidden="true">west / warm</div>
-
-            <div
-              class="blur-orb"
-              id="blur-orb"
-              role="button"
-              tabindex="0"
-              aria-label="Draggable blur orb. Use arrow keys to move it."
+        <section class="control-section">
+          <h2><span>01</span> 模糊形状</h2>
+          <div class="shape-options" role="group" aria-label="模糊形状">
+            <button
+              class="shape-button selected"
+              data-shape="circle"
+              aria-pressed="true"
             >
-              <div class="orb-shine" aria-hidden="true"></div>
-              <div class="orb-content">
-                <span class="orb-kicker">drag me</span>
-                <strong>all<br />directions</strong>
-                <span class="orb-note">clear center / soft edge</span>
+              <i class="shape-icon circle"></i>圆形<span>Radial</span>
+            </button>
+            <button
+              class="shape-button"
+              data-shape="square"
+              aria-pressed="false"
+            >
+              <i class="shape-icon square"></i>方形<span>Linear</span>
+            </button>
+          </div>
+        </section>
+        <section class="control-section">
+          <h2><span>02</span> 渐变方向</h2>
+          <div id="radial-direction" class="radial-direction">
+            <i aria-hidden="true"></i>
+            <div>中心 → 外围<small>从模糊逐渐变清晰</small></div>
+          </div>
+          <div id="linear-direction" hidden>
+            <div
+              class="direction-grid"
+              role="group"
+              aria-label="渐变方向，从模糊到清晰"
+            >
+              <button
+                data-direction="-1,-1"
+                aria-label="右下到左上"
+                aria-pressed="false"
+              >
+                ↖
+              </button>
+              <button
+                data-direction="0,-1"
+                aria-label="下到上"
+                aria-pressed="false"
+              >
+                ↑
+              </button>
+              <button
+                data-direction="1,-1"
+                aria-label="左下到右上"
+                aria-pressed="false"
+              >
+                ↗
+              </button>
+              <button
+                data-direction="-1,0"
+                aria-label="右到左"
+                aria-pressed="false"
+              >
+                ←
+              </button>
+              <span aria-hidden="true">·</span>
+              <button
+                data-direction="1,0"
+                class="selected"
+                aria-label="左到右"
+                aria-pressed="true"
+              >
+                →
+              </button>
+              <button
+                data-direction="-1,1"
+                aria-label="右上到左下"
+                aria-pressed="false"
+              >
+                ↙
+              </button>
+              <button
+                data-direction="0,1"
+                aria-label="上到下"
+                aria-pressed="false"
+              >
+                ↓
+              </button>
+              <button
+                data-direction="1,1"
+                aria-label="左上到右下"
+                aria-pressed="false"
+              >
+                ↘
+              </button>
+            </div>
+            <p class="direction-caption">箭头方向：模糊 → 清晰</p>
+          </div>
+          <label class="switch-row"
+            ><span>反转渐变</span
+            ><input id="reverse" type="checkbox" role="switch" /><i
+              aria-hidden="true"
+            ></i
+          ></label>
+        </section>
+        <section class="control-section">
+          <h2><span>03</span> 效果参数</h2>
+          <label class="range-label" for="radius"
+            >模糊强度 <output id="radius-value">24 px</output></label
+          >
+          <input
+            id="radius"
+            type="range"
+            min="0"
+            max="48"
+            step="1"
+            value="24"
+          />
+          <label class="range-label" for="size"
+            >形状大小 <output id="size-value">60%</output></label
+          >
+          <input id="size" type="range" min="20" max="85" step="1" value="60" />
+          <label class="range-label" for="transition"
+            >渐变范围 <output id="transition-value">80%</output></label
+          >
+          <input
+            id="transition"
+            type="range"
+            min="10"
+            max="100"
+            step="1"
+            value="80"
+          />
+        </section>
+        <section class="control-section background-controls">
+          <h2><span>04</span> 背景内容</h2>
+          <label class="switch-row"
+            ><span>叠加文字</span
+            ><input id="show-text" type="checkbox" role="switch" checked /><i
+              aria-hidden="true"
+            ></i
+          ></label>
+          <label class="switch-row"
+            ><span>形状轮廓</span
+            ><input id="show-outline" type="checkbox" role="switch" checked /><i
+              aria-hidden="true"
+            ></i
+          ></label>
+          <label class="upload-button" for="upload"
+            ><span>↥</span> 更换图片<input
+              id="upload"
+              type="file"
+              accept="image/*"
+          /></label>
+          <p id="image-message" class="image-message" role="status"></p>
+        </section>
+        <div class="sidebar-footer">
+          <button id="reset" type="button">↺ <span>恢复默认</span></button
+          ><span class="version">WEBGPU / 01</span>
+        </div>
+      </aside>
+      <section class="workspace" aria-label="渐变模糊预览">
+        <div class="workspace-toolbar">
+          <div class="preview-title">
+            <span class="live-dot"></span> 实时预览
+            <span class="toolbar-divider">/</span
+            ><span id="shape-name">圆形渐变</span>
+          </div>
+          <button id="compare" type="button">
+            ◐ <span>按住查看原图</span>
+          </button>
+        </div>
+        <div class="stage-wrap">
+          <div class="stage" id="stage">
+            <canvas
+              id="scene"
+              role="img"
+              aria-label="山脉照片与大小文字组成的模糊效果测试背景"
+            ></canvas>
+            <div
+              id="lens"
+              class="lens"
+              tabindex="0"
+              role="group"
+              aria-label="可拖动的模糊区域，方向键移动，Shift 加速"
+            >
+              <canvas id="blur" aria-hidden="true"></canvas>
+              <div class="lens-outline" aria-hidden="true">
+                <span class="lens-tag" id="lens-tag">RADIAL BLUR</span
+                ><span class="drag-handle">⠿</span>
               </div>
             </div>
-
-            <div class="stage-caption">
-              <span class="caption-line" aria-hidden="true"></span>
-              <span>Find the quiet spot</span>
-              <span class="caption-code">x / y</span>
-            </div>
+            <span class="original-badge">原图 · ORIGINAL</span>
           </div>
-
-          <aside class="control-dock" aria-label="Blur controls">
-            <div class="dock-header">
-              <div>
-                <span class="dock-eyebrow">live controls</span>
-                <strong>blur / mood</strong>
-              </div>
-              <span class="status-dot" id="status-dot" aria-hidden="true"></span>
-            </div>
-            <p class="status-message" id="gpu-status">Preparing the field…</p>
-            <div class="control-rule"></div>
-            <label class="control-row range-row">
-              <span>softness <output id="radius-value">16 px</output></span>
-              <input id="radius-control" type="range" min="0" max="40" step="0.5" value="16" />
-            </label>
-            <label class="control-row range-row">
-              <span>detail <output id="samples-value">15</output></span>
-              <input id="samples-control" type="range" min="1" max="32" step="1" value="15" />
-            </label>
-            <label class="toggle-row">
-              <input id="edge-control" type="checkbox" checked />
-              <span class="toggle-ui" aria-hidden="true"></span>
-              <span>crisp edges</span>
-            </label>
-            <button class="center-button" id="center-orb" type="button">Center the orb</button>
-            <div class="dock-footer">
-              <span>drag / move</span>
-              <span id="frame-value">ready</span>
-            </div>
-          </aside>
-        </section>
-
-        <section class="palette-section content-section" id="palette">
-          <div class="section-label">01 / palette</div>
-          <div class="palette-copy">
-            <p class="section-kicker">Color in motion.</p>
-            <h2>Every edge<br /><span>finds a new</span><br />atmosphere.</h2>
-            <p class="section-copy">
-              Let the orb cross the spectrum. Bright color, quiet type, and soft depth
-              make each position feel a little different.
-            </p>
+          <div class="canvas-caption">
+            <span>拖动模糊区域，观察图片与文字的变化</span
+            ><span id="position">50 / 50</span>
           </div>
-          <div class="color-ribbon" aria-hidden="true">
-            <i></i><i></i><i></i><i></i><i></i>
-          </div>
-        </section>
-
-        <section class="afterglow-section content-section" id="afterglow">
-          <div class="section-label">02 / afterglow</div>
-          <div class="afterglow-copy">
-            <p>Stay a little longer.</p>
-            <strong>Soft things<br /><em>keep moving.</em></strong>
-          </div>
-        </section>
-      </main>
-
-    </div>
+        </div>
+        <footer class="workspace-footer">
+          <span id="gpu-status" role="status">正在启动 WebGPU…</span
+          ><span
+            >背景
+            <a
+              href="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b"
+              target="_blank"
+              rel="noreferrer"
+              >Unsplash</a
+            ></span
+          >
+        </footer>
+      </section>
+    </main>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>
