@@ -15,13 +15,11 @@ const radiusControl = document.querySelector<HTMLInputElement>('#radius-control'
 const samplesControl = document.querySelector<HTMLInputElement>('#samples-control')!;
 const startControl = document.querySelector<HTMLInputElement>('#start-control')!;
 const endControl = document.querySelector<HTMLInputElement>('#end-control')!;
-const orderControl = document.querySelector<HTMLInputElement>('#order-control')!;
 const edgeControl = document.querySelector<HTMLInputElement>('#edge-control')!;
 const radiusValue = document.querySelector<HTMLOutputElement>('#radius-value')!;
 const samplesValue = document.querySelector<HTMLOutputElement>('#samples-value')!;
 const startValue = document.querySelector<HTMLOutputElement>('#start-value')!;
 const endValue = document.querySelector<HTMLOutputElement>('#end-value')!;
-const passValue = document.querySelector<HTMLElement>('#pass-value')!;
 const frameValue = document.querySelector<HTMLElement>('#frame-value')!;
 const gradientControls = [...document.querySelectorAll<HTMLElement>('.gradient-only')];
 
@@ -32,7 +30,6 @@ const NAV_BLEED_BOTTOM = 48;
 let navEffect: ProgressiveBlurEffect | undefined;
 let cardEffects: ProgressiveBlurEffect[] = [];
 let renderFrame: number | undefined;
-let lastRenderAt = 0;
 let parametersDirty = true;
 let maskKey = '';
 
@@ -44,13 +41,13 @@ function setStatus(state: 'pending' | 'ready' | 'fallback' | 'error', message: s
 
 function handleNavStatus(status: ProgressiveBlurEffectStatus): void {
   if (status.state === 'unsupported') {
-    setStatus('fallback', `WebGPU unavailable — showing the source field. ${status.reason ?? ''}`.trim());
+    setStatus('fallback', 'Blur unavailable — showing the page as-is.');
   } else if (status.state === 'error') {
-    setStatus('error', `Blur setup failed — ${status.reason ?? 'unknown error'}`);
+    setStatus('error', 'The blur field could not start.');
   } else if (status.state === 'refreshing' || status.state === 'initializing') {
-    setStatus('pending', 'Capturing the page behind the blur fields…');
+    setStatus('pending', 'Preparing the blur fields…');
   } else if (status.state === 'ready') {
-    setStatus('ready', 'WebGPU active — scroll to move every blur field.');
+    setStatus('ready', 'Ready — scroll to move every blur field.');
   }
 }
 
@@ -134,10 +131,9 @@ function updateControlLabels(changed?: 'start' | 'end'): void {
     startControl.value = String(start);
   }
   radiusValue.value = `${radius.toFixed(1).replace('.0', '')} px`;
-  samplesValue.value = `${samples} / axis`;
+  samplesValue.value = `${samples}`;
   startValue.value = `${Math.round(start * 100)}%`;
   endValue.value = `${Math.round(end * 100)}%`;
-  passValue.textContent = orderControl.checked ? 'Y → X' : 'X → Y';
   gradientControls.forEach((control) => {
     control.hidden = modeControl.value !== 'navbar';
   });
@@ -150,7 +146,7 @@ function applyNavParameters(): void {
     profile: getCurrentProfile(),
     radius: Number(radiusControl.value),
     maxSamples: Number(samplesControl.value),
-    verticalPassFirst: orderControl.checked,
+    verticalPassFirst: true,
     normalizeEdges: edgeControl.checked,
   });
   if (modeControl.value === 'reference') navEffect.invalidateMask();
@@ -159,11 +155,9 @@ function applyNavParameters(): void {
 
 function renderNow(): void {
   if (!navEffect?.renderer) return;
-  const startedAt = performance.now();
   if (parametersDirty) applyNavParameters();
   navEffect.render();
-  lastRenderAt = performance.now() - startedAt;
-  frameValue.textContent = `CPU ${lastRenderAt.toFixed(1)} ms`;
+  frameValue.textContent = 'active';
 }
 
 function scheduleRender(): void {
@@ -195,7 +189,7 @@ function handleResize(): void {
 }
 
 function bindControls(): void {
-  [modeControl, radiusControl, samplesControl, startControl, endControl, orderControl, edgeControl]
+  [modeControl, radiusControl, samplesControl, startControl, endControl, edgeControl]
     .forEach((control) => {
       const update = (): void => {
         const changed = control === startControl ? 'start' : control === endControl ? 'end' : undefined;
@@ -211,7 +205,7 @@ function bindControls(): void {
 async function boot(): Promise<void> {
   bindControls();
   updateControlLabels();
-  setStatus('pending', 'Requesting a high-performance adapter…');
+  setStatus('pending', 'Preparing the blur fields…');
   prepareMask();
 
   try {
@@ -251,8 +245,8 @@ async function boot(): Promise<void> {
     setStatus(
       navEffect.status.state === 'unsupported' ? 'fallback' : 'ready',
       navEffect.status.state === 'unsupported'
-        ? 'WebGPU unavailable — showing the source field.'
-        : 'WebGPU active — scroll to move every blur field.',
+        ? 'Blur unavailable — showing the page as-is.'
+        : 'Ready — scroll to move every blur field.',
     );
     renderNow();
   } catch (error) {
