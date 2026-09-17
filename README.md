@@ -12,6 +12,7 @@
 
 - 已完成 CPU 参考实现、WebGPU 两遍渲染内核、TypeScript 类型声明和 ESM 构建。
 - 支持 Alpha mask 的 `reference` 模式，以及按纵向渐变解析半径的 `navbar` 模式。
+- 提供 `webgpu-progressive-blur/dom` 的 `attachProgressiveBlur()`，可直接应用到任意 DOM 元素并自动管理覆盖层。
 - 核心验收覆盖非方形纹理、横纵轴、渐进 mask、边界归一化、pass 顺序和 DPR 缩放。
 - 最近一次 Chrome WebGPU 验收共 10 个 case，全部通过；单 case 最大绝对误差为 `0.00231`，低于 `0.003` 阈值。
 - `examples/navbar` 使用页面快照模拟真实导航栏背景，并支持滚动、参数调节和 WebGPU fallback 状态。
@@ -123,11 +124,59 @@ await adapter.refresh('theme');
 adapter.destroy();
 ```
 
-`html2canvas` 只是示例中的 capture provider，并不是核心库的运行时依赖。对于生产博客，应根据实际页面的跨域资源和字体加载情况选择或实现捕获方案。
+`html2canvas` 是默认 DOM 入口的运行时依赖；核心入口不会加载 DOM 捕获代码。对于生产博客，应根据实际页面的跨域资源和字体加载情况选择或实现捕获方案。
+
+### 任意 DOM 元素
+
+如果希望少写一层 canvas、source 和生命周期代码，可以直接把效果挂到任意元素：
+
+```ts
+import { attachProgressiveBlur } from 'webgpu-progressive-blur/dom';
+
+const card = document.querySelector<HTMLElement>('.glass-card')!;
+const blur = await attachProgressiveBlur(card, {
+  radius: 18,
+  profile: 'uniform',
+});
+
+// 页面内容或主题变化后重新捕获；滚动会复用已缓存的场景快照。
+await blur.refresh();
+blur.setParameters({ radius: 22 });
+blur.destroy();
+```
+
+`attachProgressiveBlur()` 默认使用 `html2canvas` 捕获 `document.body`，自动插入一个不可交互的覆盖 canvas，并在滚动时只裁剪当前元素区域。多个元素使用相同的 `captureRoot` 和滚动目标时会共享场景快照与默认 WebGPU device。
+
+`profile` 支持均匀模糊、线性渐进和自定义 Alpha mask：
+
+```ts
+await attachProgressiveBlur(card, {
+  profile: {
+    type: 'linear',
+    start: 0,
+    end: 1,
+    direction: 'top-to-bottom',
+  },
+});
+```
+
+导航栏需要在元素下方延伸一段渐隐区域时，可以使用 overlay bleed：
+
+```ts
+await attachProgressiveBlur(nav, {
+  profile: 'navbar',
+  overlay: {
+    bleed: { bottom: 48 },
+  },
+});
+```
+
+默认 DOM 捕获器适合快速接入和普通页面。跨域图片、视频、复杂 CSS 或特殊滚动容器可以注入自己的 `capture`；捕获器收到的 `output` canvas 会被复用，返回的 source 应已裁剪到当前 overlay 尺寸。
 
 ## API 概览
 
 - `createProgressiveBlur(options)`：创建异步 WebGPU renderer。
+- `attachProgressiveBlur(element, options)`：将效果直接挂载到 DOM 元素。
 - `setSource(source)`：替换源纹理或外部图像。
 - `setMask(mask)`：替换或清除 `reference` 模式使用的 Alpha mask。
 - `invalidateMask()`：通知启用缓存的非 GPU mask 在下一帧重新上传。
@@ -136,7 +185,7 @@ adapter.destroy();
 - `render()`：提交当前帧的两遍渲染。
 - `destroy()`：释放 GPU 资源；销毁后不能继续使用 renderer。
 
-完整类型定义见 [`src/core/types.ts`](src/core/types.ts) 和 [`src/dom/adapter.ts`](src/dom/adapter.ts)。
+完整类型定义见 [`src/core/types.ts`](src/core/types.ts)、[`src/dom/element.ts`](src/dom/element.ts) 和 [`src/dom/adapter.ts`](src/dom/adapter.ts)。
 
 ## 本地开发
 
@@ -163,7 +212,7 @@ CPU 测试用于验证参考算法和边界行为；GPU harness 使用真实浏�
 当前项目仍是实验性 public preview：
 
 - 需要浏览器支持 WebGPU 和 `rgba16float` 中间纹理。
-- 公开 API 不提供通用 DOM 截图实现，页面快照的准确性由调用者负责。
+- 默认 DOM API 使用 html2canvas；页面快照的准确性仍受跨域资源和复杂 CSS 的限制，也可以由调用者注入捕获实现。
 - Inferno 的可变半径两遍近似可能产生条纹或拖抹；不同页面仍需进行实际画质验收。
 
 ## 目录结构

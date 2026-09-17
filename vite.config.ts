@@ -7,10 +7,16 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)));
 export default defineConfig({
   root: resolve(projectRoot, 'examples/navbar'),
   resolve: {
-    alias: {
-      '@webgpu-progressive-blur': resolve(projectRoot, 'src/index.ts'),
-      '@webgpu-progressive-blur/dom': resolve(projectRoot, 'src/dom/index.ts'),
-    },
+    alias: [
+      {
+        find: '@webgpu-progressive-blur/dom',
+        replacement: resolve(projectRoot, 'src/dom/index.ts'),
+      },
+      {
+        find: '@webgpu-progressive-blur',
+        replacement: resolve(projectRoot, 'src/index.ts'),
+      },
+    ],
   },
   server: {
     host: '127.0.0.1',

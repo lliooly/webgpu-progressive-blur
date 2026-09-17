@@ -3,7 +3,7 @@ import type {
   ProgressiveBlurRenderer,
 } from '../core/types.js';
 
-export type DomRefreshReason = 'initial' | 'manual' | 'resize' | 'theme';
+export type DomRefreshReason = 'initial' | 'manual' | 'resize' | 'theme' | 'scroll';
 
 export interface DomScrollMetrics {
   top: number;
@@ -41,7 +41,7 @@ export interface DomAdapterStatus {
   reason?: string;
 }
 
-function getScrollMetrics(target: Window | HTMLElement): DomScrollMetrics {
+export function getScrollMetrics(target: Window | HTMLElement): DomScrollMetrics {
   if (typeof Window !== 'undefined' && target instanceof Window) {
     const documentElement = document.documentElement;
     const max = Math.max(0, documentElement.scrollHeight - window.innerHeight);

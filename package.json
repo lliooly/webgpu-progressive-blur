@@ -2,12 +2,12 @@
   "name": "webgpu-progressive-blur",
   "version": "0.1.1",
   "private": false,
-  "description": "WebGPU progressive blur for blog navigation, inspired by Inferno.",
+  "description": "WebGPU progressive blur for DOM elements and interfaces, inspired by Inferno.",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lliooly/webgpu-progressive-blur.git"
+    "url": "git+https://github.com/lliooly/webgpu-progressive-blur.git"
   },
   "bugs": {
     "url": "https://github.com/lliooly/webgpu-progressive-blur/issues"
@@ -17,6 +17,8 @@
     "webgpu",
     "progressive-blur",
     "gaussian-blur",
+    "dom",
+    "canvas",
     "typescript",
     "wgsl"
   ],
@@ -40,6 +42,9 @@
     "LICENSE",
     "THIRD_PARTY_NOTICES.md"
   ],
+  "dependencies": {
+    "html2canvas": "^1.4.1"
+  },
   "scripts": {
     "dev": "vite --config vite.config.ts",
     "build": "npm run build:lib && npm run build:demo",
@@ -54,9 +59,15 @@
   "devDependencies": {
     "@types/node": "^22.20.3",
     "@webgpu/types": "^0.1.72",
-    "html2canvas": "^1.4.1",
     "typescript": "^7.0.2",
     "vite": "^8.3.0",
     "vitest": "^5.0.1"
-  }
+  },
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "tests"
+  },
+  "author": ""
 }

@@ -4,12 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#101219" />
+    <link rel="icon" href="data:," />
     <title>Progressive Blur / WebGPU Field Notes</title>
   </head>
   <body>
     <div class="page-shell">
       <header class="site-nav" id="site-nav">
-        <canvas class="blur-output" id="blur-output" aria-hidden="true"></canvas>
         <div class="nav-inner">
           <a class="wordmark" href="#top" aria-label="Progressive blur home">
             <span class="wordmark-mark">◎</span>
@@ -68,7 +68,7 @@
 
         <section class="signal-grid content-section" id="signals">
           <div class="section-label">02 / signals</div>
-          <article class="signal-card signal-card-large">
+          <article class="signal-card signal-card-large" data-demo-blur="uniform">
             <span class="card-number">A</span>
             <h3>More signal.<br /><em>Less noise.</em></h3>
             <p>At the top edge, type and color resolve into a soft, readable veil.</p>
@@ -78,7 +78,7 @@
             <div class="card-swatch"></div>
             <p>Fine lines expose spacing, sample count, and edge normalization.</p>
           </article>
-          <article class="signal-card signal-card-wide">
+          <article class="signal-card signal-card-wide" data-demo-blur="linear">
             <span class="card-number">C</span>
             <p class="quote">“The blur should feel like atmosphere, not a sticker.”</p>
             <span class="quote-byline">— working principle / 2026</span>
@@ -108,7 +108,7 @@
         <label class="control-row">
           <span>mode</span>
           <select id="mode-control">
-            <option value="navbar">navbar gradient</option>
+            <option value="navbar">linear gradient</option>
             <option value="reference">alpha mask</option>
           </select>
         </label>

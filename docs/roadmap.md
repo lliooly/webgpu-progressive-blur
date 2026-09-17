@@ -17,6 +17,8 @@
 - [x] 通过真实 Chrome WebGPU offscreen readback，验证 Inferno kernel 的坐标、横纵轴、渐进 mask、边界和两遍顺序。
 - [x] 读取 `blog-astro`，确定正文与导航栏结构。
 - [x] 实现 provider-based DOM 适配、刷新和销毁流程。
+- [x] 实现 `attachProgressiveBlur(element, options)` 元素级封装、默认 html2canvas 捕获器、覆盖层和共享 session。
+- [x] 将 navbar demo 与内容卡片迁移到统一的元素级 API。
 - [x] 构建 ESM、类型声明与内嵌 shader。
 - [x] npm pack 并在独立项目安装验证。
 - [ ] 博客真实接入与画质验收（核心算法通过后再重新开始）。
@@ -24,7 +26,7 @@
 ## 当前阶段
 
 - 核心算法严格移植和 CPU/GPU 验收已完成。
-- 当前暂停博客、DOM 捕获和展示页面工作，下一阶段再处理导航栏源纹理对齐和真实页面画质。
+- 当前核心与通用 DOM 封装已完成；下一阶段处理真实博客接入、跨域资源策略和目标页面画质验收。
 
 ## 发布前信息
 

@@ -55,11 +55,6 @@ a {
 }
 
 .blur-output {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: calc(100% + var(--blur-overlap));
   pointer-events: none;
   -webkit-mask-image: linear-gradient(
     to bottom,
@@ -77,9 +72,12 @@ a {
 }
 
 .blur-output {
-  z-index: 0;
   display: block;
   opacity: 0.98;
+}
+
+.progressive-blur-card-overlay {
+  opacity: 0.82;
 }
 
 .nav-inner {
