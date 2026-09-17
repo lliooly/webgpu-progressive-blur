@@ -1,11 +1,14 @@
-import type { Options as Html2CanvasOptions } from 'html2canvas';
 import {
-  createProgressiveBlur,
-} from '../core/renderer.js';
-import {
-  ProgressiveBlurError,
-  requestWebGPUDevice,
-} from '../core/device.js';
+  resolveBlurPreset,
+  drawManagedMask,
+  validateProceduralProfile,
+  type BlurPresetOptions,
+  type ResolvedBlurPreset,
+  type ProceduralBlurProfile,
+} from "./presets.js";
+import type { Options as Html2CanvasOptions } from "html2canvas";
+import { createProgressiveBlur } from "../core/renderer.js";
+import { ProgressiveBlurError, requestWebGPUDevice } from "../core/device.js";
 import type {
   BlurGradient,
   BlurMode,
@@ -13,31 +16,32 @@ import type {
   GradientDirection,
   ProgressiveBlurOptions,
   ProgressiveBlurRenderer,
-} from '../core/types.js';
+} from "../core/types.js";
 import {
   getScrollMetrics,
   type DomRefreshReason,
   type DomScrollMetrics,
-} from './adapter.js';
+} from "./adapter.js";
 import {
   createDefaultDomCapture,
   type DefaultDomCaptureHandle,
   type DomCaptureStrategy,
-} from './capture.js';
+} from "./capture.js";
 
-export type { DomCaptureStrategy } from './capture.js';
+export type { DomCaptureStrategy } from "./capture.js";
 
 export type BlurProfile =
-  | 'uniform'
-  | 'navbar'
+  | ProceduralBlurProfile
+  | "uniform"
+  | "navbar"
   | {
-      type: 'linear';
+      type: "linear";
       start?: number;
       end?: number;
       direction?: GradientDirection;
     }
   | {
-      type: 'mask';
+      type: "mask";
       source: BlurSource;
     };
 
@@ -79,10 +83,12 @@ export interface BlurOverlayOptions {
 }
 
 export interface ProgressiveBlurAttachOptions
-  extends Omit<
-    ProgressiveBlurOptions,
-    'canvas' | 'source' | 'mask' | 'mode' | 'gradient'
-  > {
+  extends
+    Omit<
+      ProgressiveBlurOptions,
+      "canvas" | "source" | "mask" | "mode" | "gradient"
+    >,
+    BlurPresetOptions {
   /** Blur shape. Defaults to a constant-strength blur across the element. */
   profile?: BlurProfile;
   /** Custom source provider. The default provider uses html2canvas. */
@@ -104,12 +110,12 @@ export interface ProgressiveBlurAttachOptions
 }
 
 export type ProgressiveBlurEffectState =
-  | 'initializing'
-  | 'refreshing'
-  | 'ready'
-  | 'unsupported'
-  | 'error'
-  | 'destroyed';
+  | "initializing"
+  | "refreshing"
+  | "ready"
+  | "unsupported"
+  | "error"
+  | "destroyed";
 
 export interface ProgressiveBlurEffectStatus {
   state: ProgressiveBlurEffectState;
@@ -119,18 +125,19 @@ export interface ProgressiveBlurEffectStatus {
 export type ProgressiveBlurEffectParameters = Partial<
   Pick<
     ProgressiveBlurOptions,
-    'radius' | 'maxSamples' | 'verticalPassFirst' | 'normalizeEdges'
+    "radius" | "maxSamples" | "verticalPassFirst" | "normalizeEdges"
   >
-> & {
-  profile?: BlurProfile;
-};
+> &
+  BlurPresetOptions & {
+    profile?: BlurProfile;
+  };
 
 export interface ProgressiveBlurEffect {
   readonly element: HTMLElement;
   readonly canvas: HTMLCanvasElement;
   readonly renderer: ProgressiveBlurRenderer | undefined;
   readonly status: ProgressiveBlurEffectStatus;
-  refresh(reason?: Exclude<DomRefreshReason, 'scroll'>): Promise<void>;
+  refresh(reason?: Exclude<DomRefreshReason, "scroll">): Promise<void>;
   render(): void;
   setParameters(parameters: ProgressiveBlurEffectParameters): void;
   invalidateMask(): void;
@@ -158,22 +165,26 @@ interface DeviceRequestResult {
 const DEFAULT_GRADIENT: Required<BlurGradient> = {
   start: 0,
   end: 1,
-  direction: 'top-to-bottom',
+  direction: "top-to-bottom",
 };
 
 let sharedDevicePromise: Promise<DeviceRequestResult> | undefined;
-const activeEffects = new WeakMap<HTMLElement, ProgressiveBlurElementController>();
+const activeEffects = new WeakMap<
+  HTMLElement,
+  ProgressiveBlurElementController
+>();
 
 function normalizeNumber(value: number | undefined, fallback: number): number {
   if (value === undefined) return fallback;
-  if (!Number.isFinite(value)) throw new RangeError('Overlay bleed must be finite numbers.');
+  if (!Number.isFinite(value))
+    throw new RangeError("Overlay bleed must be finite numbers.");
   return Math.max(0, value);
 }
 
 export function normalizeOverlayBleed(
   bleed?: number | BlurOverlayBleed,
 ): NormalizedBlurOverlayBleed {
-  if (typeof bleed === 'number') {
+  if (typeof bleed === "number") {
     const value = normalizeNumber(bleed, 0);
     return { top: value, right: value, bottom: value, left: value };
   }
@@ -185,16 +196,26 @@ export function normalizeOverlayBleed(
   };
 }
 
-export function resolveBlurProfile(profile: BlurProfile = 'uniform'): ResolvedBlurProfile {
-  if (profile === 'uniform') {
-    return { mode: 'reference', gradient: { ...DEFAULT_GRADIENT }, mask: undefined };
-  }
-  if (profile === 'navbar') {
-    return { mode: 'navbar', gradient: { ...DEFAULT_GRADIENT }, mask: undefined };
-  }
-  if (profile.type === 'linear') {
+export function resolveBlurProfile(
+  profile: BlurProfile = "uniform",
+): ResolvedBlurProfile {
+  if (profile === "uniform") {
     return {
-      mode: 'navbar',
+      mode: "reference",
+      gradient: { ...DEFAULT_GRADIENT },
+      mask: undefined,
+    };
+  }
+  if (profile === "navbar") {
+    return {
+      mode: "navbar",
+      gradient: { ...DEFAULT_GRADIENT },
+      mask: undefined,
+    };
+  }
+  if (profile.type === "linear") {
+    return {
+      mode: "navbar",
       gradient: {
         start: profile.start ?? DEFAULT_GRADIENT.start,
         end: profile.end ?? DEFAULT_GRADIENT.end,
@@ -203,8 +224,16 @@ export function resolveBlurProfile(profile: BlurProfile = 'uniform'): ResolvedBl
       mask: undefined,
     };
   }
+  if (profile.type === "radial" || profile.type === "directional") {
+    validateProceduralProfile(profile);
+    return {
+      mode: "reference",
+      gradient: { ...DEFAULT_GRADIENT },
+      mask: undefined,
+    };
+  }
   return {
-    mode: 'reference',
+    mode: "reference",
     gradient: { ...DEFAULT_GRADIENT },
     mask: profile.source,
   };
@@ -225,7 +254,8 @@ async function requestSharedDevice(
     let currentPromise: Promise<DeviceRequestResult>;
     const promise = requestWebGPUDevice().then((result) => {
       result.device.lost.then(() => {
-        if (sharedDevicePromise === currentPromise) sharedDevicePromise = undefined;
+        if (sharedDevicePromise === currentPromise)
+          sharedDevicePromise = undefined;
       });
       return result;
     });
@@ -253,7 +283,8 @@ function resizeSourceCanvas(
 ): void {
   const physicalWidth = Math.max(1, Math.round(width * pixelRatio));
   const physicalHeight = Math.max(1, Math.round(height * pixelRatio));
-  if (canvas.width === physicalWidth && canvas.height === physicalHeight) return;
+  if (canvas.width === physicalWidth && canvas.height === physicalHeight)
+    return;
   canvas.width = physicalWidth;
   canvas.height = physicalHeight;
 }
@@ -261,9 +292,9 @@ function resizeSourceCanvas(
 function isRecoverableWebGPUFailure(error: unknown): boolean {
   return (
     error instanceof ProgressiveBlurError &&
-    (error.code === 'webgpu-unavailable' ||
-      error.code === 'adapter-unavailable' ||
-      error.code === 'device-unavailable')
+    (error.code === "webgpu-unavailable" ||
+      error.code === "adapter-unavailable" ||
+      error.code === "device-unavailable")
   );
 }
 
@@ -281,7 +312,7 @@ function getDefaultCaptureRoot(element: HTMLElement): HTMLElement {
 }
 
 function scheduleFrame(callback: () => void): number {
-  if (typeof requestAnimationFrame !== 'undefined') {
+  if (typeof requestAnimationFrame !== "undefined") {
     return requestAnimationFrame(() => callback());
   }
   return setTimeout(callback, 16) as unknown as number;
@@ -289,7 +320,7 @@ function scheduleFrame(callback: () => void): number {
 
 function cancelScheduledFrame(handle: number | undefined): void {
   if (handle === undefined) return;
-  if (typeof cancelAnimationFrame !== 'undefined') {
+  if (typeof cancelAnimationFrame !== "undefined") {
     cancelAnimationFrame(handle);
   } else {
     clearTimeout(handle);
@@ -307,9 +338,11 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
   private readonly defaultCaptureHandle?: DefaultDomCaptureHandle;
   private readonly options: ProgressiveBlurAttachOptions;
   private readonly onScrollCallback?: (metrics: DomScrollMetrics) => void;
-  private readonly onStatusCallback?: (status: ProgressiveBlurEffectStatus) => void;
-  private originalPosition = '';
-  private originalIsolation = '';
+  private readonly onStatusCallback?: (
+    status: ProgressiveBlurEffectStatus,
+  ) => void;
+  private originalPosition = "";
+  private originalIsolation = "";
   private changedPosition = false;
   private changedIsolation = false;
   private readonly resizeObserver?: ResizeObserver;
@@ -317,44 +350,72 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
   private readonly contentObserver?: MutationObserver;
 
   private _renderer: ProgressiveBlurRenderer | undefined;
-  private _status: ProgressiveBlurEffectStatus = { state: 'initializing' };
+  private _status: ProgressiveBlurEffectStatus = { state: "initializing" };
   private profile: BlurProfile;
+  private presetOptions: BlurPresetOptions;
+  private preset: ResolvedBlurPreset | undefined;
+  private managedMask: HTMLCanvasElement | undefined;
+  private maskKey = "";
   private currentSource: BlurSource | undefined;
   private operationController: AbortController | undefined;
   private scrollFrame: number | undefined;
   private refreshFrame: number | undefined;
-  private queuedRefreshReason: Exclude<DomRefreshReason, 'scroll'> = 'manual';
+  private queuedRefreshReason: Exclude<DomRefreshReason, "scroll"> = "manual";
   private scrollBusy = false;
   private scrollPending = false;
   private captureReleased = false;
 
-  constructor(element: HTMLElement, options: ProgressiveBlurAttachOptions = {}) {
+  constructor(
+    element: HTMLElement,
+    options: ProgressiveBlurAttachOptions = {},
+  ) {
     this.element = element;
     this.options = options;
-    this.profile = options.profile ?? 'uniform';
+    this.presetOptions = {
+      preset: options.preset,
+      placement: options.placement,
+      transition: options.transition,
+    };
+    this.preset = resolveBlurPreset(this.presetOptions);
+    if (
+      options.preset &&
+      (options.profile || options.overlay?.bleed !== undefined)
+    ) {
+      throw new TypeError(
+        "preset cannot be combined with profile or overlay.bleed.",
+      );
+    }
+    this.profile = options.profile ?? "uniform";
+    resolveBlurProfile(this.profile);
     this.captureRoot = options.captureRoot ?? getDefaultCaptureRoot(element);
     const defaultScrollTarget = element.ownerDocument.defaultView;
     if (!options.scrollTarget && !defaultScrollTarget) {
-      throw new Error('The blurred element is not attached to a window.');
+      throw new Error("The blurred element is not attached to a window.");
     }
     this.scrollTarget = options.scrollTarget ?? defaultScrollTarget!;
     this.onScrollCallback = options.onScroll;
     this.onStatusCallback = options.onStatus;
 
     if (!this.captureRoot.contains(element) && this.captureRoot !== element) {
-      throw new RangeError('captureRoot must contain the element being blurred.');
+      throw new RangeError(
+        "captureRoot must contain the element being blurred.",
+      );
     }
     if (!options.capture && this.captureRoot === element) {
-      throw new RangeError('captureRoot must be an ancestor of the element being blurred.');
+      throw new RangeError(
+        "captureRoot must be an ancestor of the element being blurred.",
+      );
     }
 
     const existing = activeEffects.get(element);
     if (existing) {
-      throw new Error('A progressive blur effect is already attached to this element.');
+      throw new Error(
+        "A progressive blur effect is already attached to this element.",
+      );
     }
 
-    this.canvas = element.ownerDocument.createElement('canvas');
-    this.sourceCanvas = element.ownerDocument.createElement('canvas');
+    this.canvas = element.ownerDocument.createElement("canvas");
+    this.sourceCanvas = element.ownerDocument.createElement("canvas");
     this.installOverlay();
 
     if (options.capture) {
@@ -364,36 +425,47 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
         element,
         captureRoot: this.captureRoot,
         scrollTarget: this.scrollTarget,
-        strategy: options.captureStrategy ?? 'document',
+        strategy: options.captureStrategy ?? "document",
         html2canvasOptions: options.captureOptions,
       });
       this.defaultCaptureHandle = handle;
       this.capture = handle.capture;
     }
 
-    this.scrollTarget.addEventListener('scroll', this.handleScroll, { passive: true });
+    this.scrollTarget.addEventListener("scroll", this.handleScroll, {
+      passive: true,
+    });
 
-    if (options.observeResize !== false && typeof ResizeObserver !== 'undefined') {
+    if (
+      options.observeResize !== false &&
+      typeof ResizeObserver !== "undefined"
+    ) {
       this.resizeObserver = new ResizeObserver(() => {
-        this.scheduleRefresh('resize');
+        this.scheduleRefresh("resize");
       });
       this.resizeObserver.observe(element);
     }
 
-    if (options.observeTheme !== false && typeof MutationObserver !== 'undefined') {
+    if (
+      options.observeTheme !== false &&
+      typeof MutationObserver !== "undefined"
+    ) {
       const documentElement = element.ownerDocument.documentElement;
       this.themeObserver = new MutationObserver(() => {
-        this.scheduleRefresh('theme');
+        this.scheduleRefresh("theme");
       });
       this.themeObserver.observe(documentElement, {
         attributes: true,
-        attributeFilter: ['class', 'data-theme', 'style'],
+        attributeFilter: ["class", "data-theme", "style"],
       });
     }
 
-    if (options.observeContent === true && typeof MutationObserver !== 'undefined') {
+    if (
+      options.observeContent === true &&
+      typeof MutationObserver !== "undefined"
+    ) {
       this.contentObserver = new MutationObserver(() => {
-        this.scheduleRefresh('manual');
+        this.scheduleRefresh("manual");
       });
       this.contentObserver.observe(this.captureRoot, {
         attributes: true,
@@ -404,7 +476,7 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
     }
 
     activeEffects.set(element, this);
-    this.setStatus({ state: 'initializing' });
+    this.setStatus({ state: "initializing" });
   }
 
   get renderer(): ProgressiveBlurRenderer | undefined {
@@ -434,47 +506,100 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
         pixelRatio: this.options.pixelRatio,
         gradient: resolved.gradient,
         format: this.options.format,
-        canvasUploadMode: this.options.canvasUploadMode ?? 'external',
+        canvasUploadMode: this.options.canvasUploadMode ?? "external",
         cacheMask: this.options.cacheMask ?? true,
       });
       this.canvas.hidden = false;
-      await this.refresh('initial');
+      await this.refresh("initial");
     } catch (error) {
       if (isRecoverableWebGPUFailure(error)) {
         this.releaseCapture();
         this.canvas.hidden = true;
-        this.setStatus({ state: 'unsupported', reason: toErrorMessage(error) });
+        this.setStatus({ state: "unsupported", reason: toErrorMessage(error) });
         return;
       }
-      this.setStatus({ state: 'error', reason: toErrorMessage(error) });
+      this.setStatus({ state: "error", reason: toErrorMessage(error) });
       throw error;
     }
   }
 
-  async refresh(reason: Exclude<DomRefreshReason, 'scroll'> = 'manual'): Promise<void> {
+  async refresh(
+    reason: Exclude<DomRefreshReason, "scroll"> = "manual",
+  ): Promise<void> {
     this.ensureAlive();
     if (!this._renderer) return;
+    cancelScheduledFrame(this.refreshFrame);
+    this.refreshFrame = undefined;
     await this.update(reason, true);
   }
 
   render(): void {
     this.ensureAlive();
+    this.prepareManagedMask();
     this._renderer?.render();
   }
 
   setParameters(parameters: ProgressiveBlurEffectParameters): void {
     this.ensureAlive();
+    const hasPreset =
+      parameters.preset !== undefined ||
+      parameters.placement !== undefined ||
+      parameters.transition !== undefined;
+    if (hasPreset && parameters.profile !== undefined)
+      throw new TypeError("Choose preset or profile.");
+    if (hasPreset) {
+      if (this.options.overlay?.bleed !== undefined)
+        throw new TypeError("preset cannot be combined with overlay.bleed.");
+      const next =
+        parameters.preset && parameters.preset !== this.presetOptions.preset
+          ? {
+              preset: parameters.preset,
+              placement: parameters.placement,
+              transition: parameters.transition,
+            }
+          : {
+              ...this.presetOptions,
+              ...Object.fromEntries(
+                Object.entries(parameters).filter(
+                  ([key, value]) =>
+                    ["preset", "placement", "transition"].includes(key) &&
+                    value !== undefined,
+                ),
+              ),
+            };
+      const resolved = resolveBlurPreset(next);
+      this.presetOptions = next;
+      if (JSON.stringify(resolved) !== JSON.stringify(this.preset)) {
+        this.preset = resolved;
+        this.profile = "uniform";
+        this.maskKey = "";
+        this.applyOverlayGeometry();
+        this._renderer?.setParameters({ mode: "reference" });
+        this.scheduleRefresh("resize");
+      }
+    }
     if (parameters.profile !== undefined) {
+      const resolved = resolveBlurProfile(parameters.profile);
       this.profile = parameters.profile;
-      const resolved = resolveBlurProfile(this.profile);
+      this.preset = undefined;
+      this.presetOptions = {};
+      this.maskKey = "";
+      this.applyOverlayGeometry();
       this._renderer?.setMask(resolved.mask);
       this._renderer?.setParameters({
         mode: resolved.mode,
         gradient: resolved.gradient,
       });
+      this.scheduleRefresh("resize");
     }
     if (!this._renderer) return;
-    const { profile: _profile, ...coreParameters } = parameters;
+    const {
+      profile: _profile,
+      preset: _preset,
+      placement: _placement,
+      transition: _transition,
+      ...coreParameters
+    } = parameters;
     if (Object.keys(coreParameters).length > 0) {
       this._renderer.setParameters(coreParameters);
     }
@@ -486,7 +611,7 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
   }
 
   destroy(): void {
-    if (this._status.state === 'destroyed') return;
+    if (this._status.state === "destroyed") return;
     this.operationController?.abort();
     cancelScheduledFrame(this.scrollFrame);
     cancelScheduledFrame(this.refreshFrame);
@@ -495,14 +620,17 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
     this.resizeObserver?.disconnect();
     this.themeObserver?.disconnect();
     this.contentObserver?.disconnect();
-    this.scrollTarget.removeEventListener('scroll', this.handleScroll);
+    this.scrollTarget.removeEventListener("scroll", this.handleScroll);
     this.releaseCapture();
     this._renderer?.destroy();
     this.canvas.remove();
-    if (this.changedPosition) this.element.style.position = this.originalPosition;
-    if (this.changedIsolation) this.element.style.isolation = this.originalIsolation;
-    if (activeEffects.get(this.element) === this) activeEffects.delete(this.element);
-    this.setStatus({ state: 'destroyed' });
+    if (this.changedPosition)
+      this.element.style.position = this.originalPosition;
+    if (this.changedIsolation)
+      this.element.style.isolation = this.originalIsolation;
+    if (activeEffects.get(this.element) === this)
+      activeEffects.delete(this.element);
+    this.setStatus({ state: "destroyed" });
   }
 
   private async update(
@@ -515,18 +643,24 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
     this.operationController?.abort();
     const controller = new AbortController();
     this.operationController = controller;
-    if (reportStatus) this.setStatus({ state: 'refreshing' });
+    if (reportStatus) this.setStatus({ state: "refreshing" });
 
     try {
-      if (reason === 'initial') {
+      if (reason === "initial") {
         const fonts = this.element.ownerDocument.fonts;
         if (fonts) await fonts.ready;
       }
       if (controller.signal.aborted) return;
 
       const rect = this.canvas.getBoundingClientRect();
-      const width = Math.max(1, rect.width || this.element.getBoundingClientRect().width);
-      const height = Math.max(1, rect.height || this.element.getBoundingClientRect().height);
+      const width = Math.max(
+        1,
+        rect.width || this.element.getBoundingClientRect().width,
+      );
+      const height = Math.max(
+        1,
+        rect.height || this.element.getBoundingClientRect().height,
+      );
       const pixelRatio = getPixelRatio(this.element, this.options.pixelRatio);
       renderer.resize(width, height, pixelRatio);
       resizeSourceCanvas(this.sourceCanvas, width, height, pixelRatio);
@@ -551,21 +685,23 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
         renderer.setSource(source);
         this.currentSource = source;
       }
+      this.prepareManagedMask();
       renderer.render();
-      if (reportStatus || this._status.state === 'refreshing') {
-        this.setStatus({ state: 'ready' });
+      if (reportStatus || this._status.state === "refreshing") {
+        this.setStatus({ state: "ready" });
       }
     } catch (error) {
       if (controller.signal.aborted) return;
-      this.setStatus({ state: 'error', reason: toErrorMessage(error) });
+      this.setStatus({ state: "error", reason: toErrorMessage(error) });
       throw error;
     } finally {
-      if (this.operationController === controller) this.operationController = undefined;
+      if (this.operationController === controller)
+        this.operationController = undefined;
     }
   }
 
   private readonly handleScroll = (): void => {
-    if (this._status.state === 'destroyed' || !this._renderer) return;
+    if (this._status.state === "destroyed" || !this._renderer) return;
     if (this.scrollBusy) {
       this.scrollPending = true;
       return;
@@ -578,10 +714,15 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
   };
 
   private async updateForScroll(): Promise<void> {
-    if (this.scrollBusy || this._status.state === 'destroyed' || !this._renderer) return;
+    if (
+      this.scrollBusy ||
+      this._status.state === "destroyed" ||
+      !this._renderer
+    )
+      return;
     this.scrollBusy = true;
     try {
-      await this.update('scroll', false);
+      await this.update("scroll", false);
     } catch {
       // update() reports the actionable error through the status callback.
     } finally {
@@ -593,9 +734,10 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
     }
   }
 
-  private scheduleRefresh(reason: Exclude<DomRefreshReason, 'scroll'>): void {
+  private scheduleRefresh(reason: Exclude<DomRefreshReason, "scroll">): void {
     this.queuedRefreshReason = reason;
-    if (this.refreshFrame !== undefined || this._status.state === 'destroyed') return;
+    if (this.refreshFrame !== undefined || this._status.state === "destroyed")
+      return;
     this.refreshFrame = scheduleFrame(() => {
       this.refreshFrame = undefined;
       const nextReason = this.queuedRefreshReason;
@@ -610,27 +752,63 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
     const computed = view?.getComputedStyle(this.element);
     this.originalPosition = this.element.style.position;
     this.originalIsolation = this.element.style.isolation;
-    this.changedPosition = computed?.position === 'static';
-    this.changedIsolation = computed?.isolation === 'auto';
-    if (this.changedPosition) this.element.style.position = 'relative';
-    if (this.changedIsolation) this.element.style.isolation = 'isolate';
+    this.changedPosition = computed?.position === "static";
+    this.changedIsolation = computed?.isolation === "auto";
+    if (this.changedPosition) this.element.style.position = "relative";
+    if (this.changedIsolation) this.element.style.isolation = "isolate";
 
-    const bleed = normalizeOverlayBleed(this.options.overlay?.bleed);
-    this.canvas.className = this.options.overlay?.className ?? 'progressive-blur-overlay';
-    this.canvas.dataset.progressiveBlurOverlay = 'true';
-    this.canvas.setAttribute('aria-hidden', 'true');
-    this.canvas.setAttribute('role', 'presentation');
-    this.canvas.style.position = 'absolute';
+    this.applyOverlayGeometry();
+    this.canvas.className =
+      this.options.overlay?.className ?? "progressive-blur-overlay";
+    this.canvas.dataset.progressiveBlurOverlay = "true";
+    this.canvas.setAttribute("aria-hidden", "true");
+    this.canvas.setAttribute("role", "presentation");
+    this.canvas.style.position = "absolute";
+    this.canvas.style.pointerEvents = "none";
+    this.canvas.style.display = "block";
+    this.canvas.style.zIndex = String(this.options.overlay?.zIndex ?? -1);
+    this.canvas.style.borderRadius = "inherit";
+    this.canvas.hidden = true;
+    this.element.insertBefore(this.canvas, this.element.firstChild);
+  }
+
+  private applyOverlayGeometry(): void {
+    const bleed =
+      this.preset?.bleed ?? normalizeOverlayBleed(this.options.overlay?.bleed);
     this.canvas.style.top = `${-bleed.top}px`;
     this.canvas.style.left = `${-bleed.left}px`;
     this.canvas.style.width = `calc(100% + ${bleed.left + bleed.right}px)`;
     this.canvas.style.height = `calc(100% + ${bleed.top + bleed.bottom}px)`;
-    this.canvas.style.pointerEvents = 'none';
-    this.canvas.style.display = 'block';
-    this.canvas.style.zIndex = String(this.options.overlay?.zIndex ?? -1);
-    this.canvas.style.borderRadius = 'inherit';
-    this.canvas.hidden = true;
-    this.element.insertBefore(this.canvas, this.element.firstChild);
+  }
+
+  private prepareManagedMask(): void {
+    const renderer = this._renderer;
+    const procedural =
+      typeof this.profile === "object" &&
+      (this.profile.type === "radial" || this.profile.type === "directional")
+        ? this.profile
+        : undefined;
+    if (!renderer || (!this.preset && !procedural)) return;
+    const key = JSON.stringify([
+      renderer.width,
+      renderer.height,
+      renderer.pixelRatio,
+      this.preset,
+      procedural,
+    ]);
+    if (key === this.maskKey) return;
+    this.managedMask ??= this.element.ownerDocument.createElement("canvas");
+    drawManagedMask(
+      this.managedMask,
+      renderer.width / renderer.pixelRatio,
+      renderer.height / renderer.pixelRatio,
+      renderer.pixelRatio,
+      this.preset,
+      procedural,
+    );
+    renderer.setMask(this.managedMask);
+    renderer.invalidateMask();
+    this.maskKey = key;
   }
 
   private setStatus(status: ProgressiveBlurEffectStatus): void {
@@ -645,8 +823,10 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
   }
 
   private ensureAlive(): void {
-    if (this._status.state === 'destroyed') {
-      throw new Error('The progressive blur element effect has been destroyed.');
+    if (this._status.state === "destroyed") {
+      throw new Error(
+        "The progressive blur element effect has been destroyed.",
+      );
     }
   }
 }
@@ -655,8 +835,12 @@ export async function attachProgressiveBlur(
   element: HTMLElement,
   options: ProgressiveBlurAttachOptions = {},
 ): Promise<ProgressiveBlurEffect> {
-  if (!element || element.nodeType !== 1 || typeof element.getBoundingClientRect !== 'function') {
-    throw new TypeError('attachProgressiveBlur expects an HTMLElement.');
+  if (
+    !element ||
+    element.nodeType !== 1 ||
+    typeof element.getBoundingClientRect !== "function"
+  ) {
+    throw new TypeError("attachProgressiveBlur expects an HTMLElement.");
   }
 
   const controller = new ProgressiveBlurElementController(element, options);
