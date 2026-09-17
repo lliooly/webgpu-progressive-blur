@@ -1,0 +1,128 @@
+name: Publish packages
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      publish_npm:
+        description: Also publish the package to npm
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  NODE_VERSION: 20.x
+  GITHUB_PACKAGE_NAME: '@lliooly/webgpu-progressive-blur'
+  GITHUB_REGISTRY: https://npm.pkg.github.com
+
+jobs:
+  publish-npm:
+    if: ${{ github.event_name == 'release' || inputs.publish_npm == true }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify release version
+        if: ${{ github.event_name == 'release' }}
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+          const expectedVersion = process.env.RELEASE_TAG.replace(/^v/, '');
+
+          if (packageJson.version !== expectedVersion) {
+            throw new Error(
+              `package.json version ${packageJson.version} does not match release tag ${process.env.RELEASE_TAG}`,
+            );
+          }
+          NODE
+
+      - name: Check types
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build package
+        run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-github:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: ${{ env.GITHUB_REGISTRY }}
+          scope: '@lliooly'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify release version
+        if: ${{ github.event_name == 'release' }}
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+
+          const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+          const expectedVersion = process.env.RELEASE_TAG.replace(/^v/, '');
+
+          if (packageJson.version !== expectedVersion) {
+            throw new Error(
+              `package.json version ${packageJson.version} does not match release tag ${process.env.RELEASE_TAG}`,
+            );
+          }
+          NODE
+
+      - name: Check types
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build package
+        run: npm run build
+
+      - name: Configure GitHub package identity
+        run: |
+          npm pkg set "name=${GITHUB_PACKAGE_NAME}"
+          npm pkg set "publishConfig.registry=${GITHUB_REGISTRY}"
+
+      - name: Publish to GitHub Packages
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
