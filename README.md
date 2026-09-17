@@ -4,13 +4,19 @@
 
 基于 **TypeScript、WebGPU 和 WGSL** 的渐变模糊库。让模糊强度随位置连续变化：从中心向外逐渐清晰、从一侧向另一侧过渡，或通过自定义遮罩定义模糊区域。
 
-仓库同时提供一个可交互的效果调试台：在照片和文字背景上切换形状、方向与参数，直接观察真实的 GPU 渲染结果。核心库无框架绑定，可接入 Canvas、图像源或 DOM 界面。
+仓库同时提供一个可交互的预设效果台：选择导航栏、侧栏等场景，调整参数，直接复制安装命令、JavaScript 和 HTML / CSS 接入代码。预览与接入代码使用同一套公开 API。核心库无框架绑定，可接入 Canvas、图像源或 DOM 界面。
 
 当前为 `0.1.1` 预览版本。算法参考 Inferno 的可变半径模糊，以 WGSL 重写；来源与授权见[致谢](#致谢)和 [第三方声明](THIRD_PARTY_NOTICES.md)。
 
 [效果预览](#效果预览) · [本地运行](#本地运行) · [在项目中使用](#在项目中使用) · [实现原理](#实现原理) · [部署](#部署) · [开发与验证](#开发与验证)
 
 ## 效果预览
+
+### 选择预设，复制到项目
+
+![预设效果台：顶部导航的渐变模糊与安装、接入代码面板](docs/images/preset-studio.png)
+
+支持 navbar、左右 sidebar、bottom-bar、图片 caption、四边 edge 和均匀模糊 panel。形状实验继续提供径向及任意方向渐变。
 
 以下截图来自本仓库的实际 WebGPU 调试台，图片与文字均参与模糊。
 
@@ -47,9 +53,13 @@ npm run dev
 
 ## 在项目中使用
 
-### 安装本地构建的包
+### 安装
 
-目前 npm 公共 registry 尚未提供此包，先从源码打包安装。在本仓库执行：
+```bash
+npm install webgpu-progressive-blur@0.1.1
+```
+
+如果需要使用工作区中的修改，也可以从源码打包。在本仓库执行：
 
 ```bash
 npm ci
@@ -63,13 +73,50 @@ npm pack
 npm install /path/to/webgpu-progressive-blur-0.1.1.tgz
 ```
 
-包提供 3 个 ESM 入口，并附带 TypeScript 声明：
+包提供 3 个 ESM 入口，并附带 TypeScript 声明。新版 TypeScript 已包含 WebGPU 类型；如果旧版编译器提示无法识别 `GPUDevice` 等名称，可执行 `npm install -D @webgpu/types`，并在该项目的 `tsconfig.json` 的 `compilerOptions.types` 中追加 `"@webgpu/types"`。库不会强制注入全局类型，避免与新版 DOM 类型冲突。
+
+包入口：
 
 | 入口 | 用途 |
 | --- | --- |
 | `webgpu-progressive-blur` | 核心渲染器、设备检测、CPU 参考算法 |
 | `webgpu-progressive-blur/dom` | DOM 元素挂载、捕获与生命周期适配 |
 | `webgpu-progressive-blur/shaders` | 原始 WGSL 字符串 `variableBlurWgsl` |
+
+### 组件预设：从效果台到实际项目
+
+在效果台选择场景，调整模糊强度和渐隐长度，然后依次复制「安装」「JavaScript」「HTML / CSS」。接入已有项目时，保留自己的布局和前景内容，将代码挂载到目标元素即可。
+
+```ts
+import { attachProgressiveBlur } from 'webgpu-progressive-blur/dom';
+
+const navbar = document.querySelector<HTMLElement>('.my-navbar')!;
+const effect = await attachProgressiveBlur(navbar, {
+  preset: 'navbar',
+  radius: 24,
+  transition: 48,
+});
+
+// 背景内容变化后：await effect.refresh();
+// 组件卸载时：effect.destroy();
+```
+
+| `preset` | `placement` | 行为 |
+| --- | --- | --- |
+| `navbar` | `top` | 顶部导航内部保持模糊，向下渐隐 |
+| `sidebar` | `left` / `right` | 侧栏内部保持模糊，向正文方向渐隐 |
+| `bottom-bar` | `bottom` | 底部工具栏、输入区或播放器，向上渐隐 |
+| `caption` | `bottom` / `top` | 图片标题区域保持模糊，向图片内部渐隐 |
+| `edge` | `top` / `bottom` / `left` / `right` | 装饰性边缘条，向内容区渐隐 |
+| `panel` | 无需设置 | 整个面板均匀模糊，不增加外延 |
+
+`placement` 表示组件所在边缘，不是模糊方向；默认采用表格中的第一个位置。`transition` 是元素外部渐隐长度，单位为 CSS px，默认 `48`，可以为 `0`；`panel` 忽略渐隐长度。库自动生成并缓存遮罩，跟随尺寸变化更新。
+
+预设只提供效果，不创建导航项、按钮或布局。目标元素应有尺寸且背景透明；祖先的 `overflow: hidden` 可能裁掉外延，需要根据页面布局安排。前景文字保持清晰。React、Vue、Astro 等项目应在客户端挂载后初始化，卸载时调用 `destroy()`。
+
+`preset` 与 `profile`、`overlay.bleed` 不能同时设置。可以通过 `setParameters({ preset: 'sidebar', placement: 'right' })` 切换预设；切换预设或 profile 会安排异步刷新，若需等待完成则使用 `await effect.refresh()`。单独修改半径后仍需 `effect.render()`。
+
+高级形状无需手绘 mask：`profile: { type: 'radial', transition: 0.8, reverse: false }` 或 `profile: { type: 'directional', direction: [1, 1], transition: 0.8 }`。这里 `transition` 是 `(0, 1]` 内的比例，与组件预设的 CSS 像素长度不同。
 
 ### Canvas：创建一个径向渐变模糊
 
@@ -167,7 +214,7 @@ const blur = await createProgressiveBlur({
 blur.render();
 ```
 
-`top-to-bottom` 表示顶部最模糊、底部最清晰，`bottom-to-top` 相反。`start`、`end` 是归一化纵向坐标，通常设置为 `0 ≤ start < end ≤ 1`。**横向、斜向和圆形渐变使用 `reference` 模式及自定义遮罩**；它们不是 `gradient.direction` 的内置选项。
+`top-to-bottom` 表示顶部最模糊、底部最清晰，`bottom-to-top` 相反。`start`、`end` 是归一化纵向坐标，通常设置为 `0 ≤ start < end ≤ 1`。**横向、斜向和圆形渐变使用 `reference` 模式及遮罩**；DOM 入口的 `radial` / `directional` profile 会自动生成遮罩。它们不是核心 `gradient.direction` 的内置选项。
 
 ### DOM：挂载到界面元素
 
@@ -298,7 +345,7 @@ step = max(1, R / maxSamples)
 
 `reference` 模式只读取遮罩纹理的 Alpha；`navbar` 模式在 Shader 内根据 `uv.y`、`start`、`end` 和方向解析出强度。
 
-调试台在 Canvas 2D 中生成自定义遮罩：
+DOM 预设与形状 profile 在 [presets.ts](src/dom/presets.ts) 中用 Canvas 2D 生成遮罩，组件内部保持全强度，元素外部按渐隐长度过渡。形状实验使用以下规则：
 
 - **圆形**：按到圆心的距离生成径向 Alpha 渐变，默认圆心为 `1`、外围为 `0`。
 - **方形**：将像素位置投影到选定方向，生成横向、纵向或斜向渐变。对角方向按方形角点投影确定完整跨度。
