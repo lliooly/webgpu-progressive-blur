@@ -6,6 +6,9 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)));
 
 export default defineConfig({
   root: resolve(projectRoot, 'examples/navbar'),
+  // GitHub Pages serves this project from /webgpu-progressive-blur/.
+  // Keep local development at /, while allowing the workflow to override it.
+  base: process.env.VITE_BASE_PATH ?? '/',
   resolve: {
     alias: [
       {
