@@ -1,6 +1,6 @@
 {
   "name": "webgpu-progressive-blur",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": false,
   "description": "WebGPU progressive blur for DOM elements and interfaces, inspired by Inferno.",
   "type": "module",
@@ -46,7 +46,7 @@
     "templates"
   ],
   "dependencies": {
-    "html2canvas": "^1.4.1",
+    "html2canvas-pro": "^2.4.4",
     "semver": "^7.7.2"
   },
   "scripts": {

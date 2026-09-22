@@ -6,7 +6,7 @@ import {
   type ResolvedBlurPreset,
   type ProceduralBlurProfile,
 } from "./presets.js";
-import type { Options as Html2CanvasOptions } from "html2canvas";
+import type { Options as Html2CanvasOptions } from "html2canvas-pro";
 import { createProgressiveBlur } from "../core/renderer.js";
 import { ProgressiveBlurError, requestWebGPUDevice } from "../core/device.js";
 import type {
@@ -91,7 +91,7 @@ export interface ProgressiveBlurAttachOptions
     BlurPresetOptions {
   /** Blur shape. Defaults to a constant-strength blur across the element. */
   profile?: BlurProfile;
-  /** Custom source provider. The default provider uses html2canvas. */
+  /** Custom source provider. The default provider uses html2canvas-pro. */
   capture?: DomElementCapture;
   /** Root captured by the default DOM provider. Defaults to body. */
   captureRoot?: HTMLElement;
@@ -99,7 +99,7 @@ export interface ProgressiveBlurAttachOptions
   scrollTarget?: Window | HTMLElement;
   /** Full-document caching (default) or viewport recapture on scroll. */
   captureStrategy?: DomCaptureStrategy;
-  /** Additional html2canvas options used by the default provider. */
+  /** Additional html2canvas-pro options used by the default provider. */
   captureOptions?: Partial<Html2CanvasOptions>;
   overlay?: BlurOverlayOptions;
   observeResize?: boolean;

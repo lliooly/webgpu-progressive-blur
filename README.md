@@ -6,7 +6,7 @@
 
 仓库同时提供一个可交互的预设效果台：选择导航栏、侧栏等场景，调整参数，选择 React、Astro 或原生 DOM，直接复制安装命令、组件用法和布局说明。预览与接入代码使用同一套公开 API。核心库无框架绑定，可接入 Canvas、图像源或 DOM 界面。
 
-当前源码工作区版本为 `0.2.0`；npm registry 当前 latest 仍为 `0.1.1`，所以本文中带 `@0.2.0` 的 CLI 命令要在该版本发布后使用。算法参考 Inferno 的可变半径模糊，以 WGSL 重写；来源与授权见[致谢](#致谢)和 [第三方声明](THIRD_PARTY_NOTICES.md)。
+当前源码工作区版本为 `0.2.1`；本文中带 `@0.2.1` 的 CLI 命令要在该版本发布后使用。算法参考 Inferno 的可变半径模糊，以 WGSL 重写；来源与授权见[致谢](#致谢)和 [第三方声明](THIRD_PARTY_NOTICES.md)。
 
 [效果预览](#效果预览) · [本地运行](#本地运行) · [在项目中使用](#在项目中使用) · [实现原理](#实现原理) · [部署](#部署) · [开发与验证](#开发与验证)
 
@@ -71,10 +71,10 @@ npm run build:lib
 npm pack --pack-destination /tmp
 ```
 
-当前源码会生成 `webgpu-progressive-blur-0.2.0.tgz`。在你的应用目录中安装生成的文件：
+当前源码会生成 `webgpu-progressive-blur-0.2.1.tgz`。在你的应用目录中安装生成的文件：
 
 ```bash
-npm install /path/to/webgpu-progressive-blur-0.2.0.tgz
+npm install /path/to/webgpu-progressive-blur-0.2.1.tgz
 ```
 
 包提供 3 个 ESM 入口，并附带 TypeScript 声明。新版 TypeScript 已包含 WebGPU 类型；如果旧版编译器提示无法识别 `GPUDevice` 等名称，可执行 `npm install -D @webgpu/types`，并在该项目的 `tsconfig.json` 的 `compilerOptions.types` 中追加 `"@webgpu/types"`。库不会强制注入全局类型，避免与新版 DOM 类型冲突。
@@ -89,20 +89,20 @@ npm install /path/to/webgpu-progressive-blur-0.2.0.tgz
 
 ### React / Astro 源码组件
 
-发布 `0.2.0` 后，在应用根目录运行。当前预发布 tarball 验证使用 `--no-install`，以免向 registry 请求尚未发布的 `0.2.0`：
+发布 `0.2.1` 后，在应用根目录运行。当前预发布 tarball 验证使用 `--no-install`，以免向 registry 请求尚未发布的 `0.2.1`：
 
 ```bash
 # 当前预设：只添加一个组件
-npx webgpu-progressive-blur@0.2.0 add navbar --framework react
-npx webgpu-progressive-blur@0.2.0 add navbar --framework astro
+npx webgpu-progressive-blur@0.2.1 add navbar --framework react
+npx webgpu-progressive-blur@0.2.1 add navbar --framework astro
 
 # 不指定名称：添加全部六类组件；多个名称按首次出现顺序去重
-npx webgpu-progressive-blur@0.2.0 add --framework react
-npx webgpu-progressive-blur@0.2.0 add navbar sidebar --framework react
+npx webgpu-progressive-blur@0.2.1 add --framework react
+npx webgpu-progressive-blur@0.2.1 add navbar sidebar --framework react
 
 # 预览、指定目录或跳过依赖安装
-npx webgpu-progressive-blur@0.2.0 add navbar --framework react --dry-run
-npx webgpu-progressive-blur@0.2.0 add navbar --framework astro --dir src/components/progressive_blur --no-install
+npx webgpu-progressive-blur@0.2.1 add navbar --framework react --dry-run
+npx webgpu-progressive-blur@0.2.1 add navbar --framework astro --dir src/components/progressive_blur --no-install
 ```
 
 CLI 优先识别显式 `--framework`，否则按 `astro` 再 `react` 检测当前 `package.json`。默认有 `src/` 时写入 `src/components/progressive_blur/`，没有时写入 `components/progressive_blur/`；`--dir` 只能指向应用根目录内的相对目录。它支持 npm、pnpm、Yarn 和 Bun，并从 `packageManager`、单一 lockfile 或 npm 默认值决定包管理器。
@@ -320,7 +320,7 @@ effect.render();
 // 组件卸载时：effect.destroy();
 ```
 
-`profile` 还支持 `'uniform'`、`'navbar'` 和 `{ type: 'mask', source: maskCanvas }`。默认捕获器使用 `html2canvas` 捕获背景场景，排除目标元素，因而前景内容保持清晰；这与调试台将文字绘入源图的方式不同。
+`profile` 还支持 `'uniform'`、`'navbar'` 和 `{ type: 'mask', source: maskCanvas }`。默认捕获器使用 `html2canvas-pro` 捕获背景场景，排除目标元素，因而前景内容保持清晰；这与调试台将文字绘入源图的方式不同。它支持现代 CSS 颜色函数，适合包含 `color-mix()` 等样式的页面。
 
 默认滚动策略复用场景快照，内容变化可调用 `refresh()`。复杂页面可传入 `captureRoot`、`scrollTarget` 或自定义 `capture`。DOM 捕获并非浏览器原生的实时 backdrop 读取，跨域图片、视频、复杂 CSS 与动态内容需要在目标页面验证。
 
@@ -549,7 +549,7 @@ GPU 验证页默认请求 `http://127.0.0.1:4174/`，具体端口以终端为准
 
 - **[Inferno](https://github.com/twostraws/Inferno)**：SwiftUI / Metal Shader 项目，本库参考其中的可变模糊算法。参考版本固定于 `a40c7a0bdec03aae1bd0b96c41d6a75451bafd2c`；相关模糊 Shader 与 Swift 包装作者为 Dale Price，项目版权属于 Paul Hudson 与其他作者。
 - **[Variablur](https://github.com/daprice/Variablur)**：上游可变模糊实现的历史来源。
-- **[html2canvas](https://github.com/niklasvh/html2canvas)**：默认 DOM 背景捕获依赖。
+- **[html2canvas-pro](https://github.com/yorickshan/html2canvas-pro)**：默认 DOM 背景捕获依赖。
 - **[Vite](https://vite.dev/)、[TypeScript](https://www.typescriptlang.org/)、[Vitest](https://vitest.dev/)**：开发、构建与测试工具。
 - **[Unsplash 背景照片](https://images.unsplash.com/photo-1464822759023-fed622ff2c3b)**：调试台与本文截图使用的山脉图像，来源记录见 [assets/README.md](examples/navbar/assets/README.md)。
 

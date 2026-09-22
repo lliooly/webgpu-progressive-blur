@@ -1,5 +1,5 @@
-import html2canvas from 'html2canvas';
-import type { Options as Html2CanvasOptions } from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
+import type { Options as Html2CanvasOptions } from 'html2canvas-pro';
 import type { BlurSource } from '../core/types.js';
 import type {
   DomElementCapture,
@@ -316,10 +316,12 @@ class SharedDomCaptureSession {
       };
     }
 
-    const rootRect = this.captureRoot.getBoundingClientRect();
+    // Snapshot origins are kept in document/page coordinates for both root
+    // kinds. Converting the target to the same space is important when the
+    // capture root is a nested scrolling element.
     return {
-      x: request.rect.left - rootRect.left + this.captureRoot.scrollLeft,
-      y: request.rect.top - rootRect.top + this.captureRoot.scrollTop,
+      x: request.rect.left + pageScroll.x,
+      y: request.rect.top + pageScroll.y,
     };
   }
 }
