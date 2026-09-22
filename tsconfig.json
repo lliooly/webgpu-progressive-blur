@@ -5,7 +5,9 @@
     "moduleResolution": "Bundler",
     "paths": {
       "@webgpu-progressive-blur": ["./src/index.ts"],
-      "@webgpu-progressive-blur/dom": ["./src/dom/index.ts"]
+      "@webgpu-progressive-blur/dom": ["./src/dom/index.ts"],
+      "webgpu-progressive-blur": ["./src/index.ts"],
+      "webgpu-progressive-blur/dom": ["./src/dom/index.ts"]
     },
     "strict": true,
     "skipLibCheck": true,
