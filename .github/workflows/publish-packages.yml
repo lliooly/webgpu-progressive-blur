@@ -67,6 +67,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   publish-github:
+    if: ${{ github.event_name == 'release' || inputs.publish_npm != true }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out release
