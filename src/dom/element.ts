@@ -26,9 +26,16 @@ import {
   createDefaultDomCapture,
   type DefaultDomCaptureHandle,
   type DomCaptureStrategy,
+  type OversizedDocumentCaptureStrategy,
 } from "./capture.js";
 
-export type { DomCaptureStrategy } from "./capture.js";
+export type {
+  DomCaptureStrategy,
+  OversizedDocumentCaptureStrategy,
+} from "./capture.js";
+
+const SCROLL_CAPTURE_INTERVAL_MS = 120;
+const SCROLL_IDLE_DELAY_MS = 120;
 
 export type BlurProfile =
   | ProceduralBlurProfile
@@ -66,6 +73,11 @@ export type DomElementCapture = (
   request: DomElementCaptureRequest,
 ) => Promise<BlurSource> | BlurSource;
 
+export type DomElementCapturePruner = (
+  element: Element,
+  request: DomElementCaptureRequest,
+) => boolean;
+
 export interface BlurOverlayBleed {
   top?: number;
   right?: number;
@@ -99,6 +111,10 @@ export interface ProgressiveBlurAttachOptions
   scrollTarget?: Window | HTMLElement;
   /** Full-document caching (default) or viewport recapture on scroll. */
   captureStrategy?: DomCaptureStrategy;
+  /** Strategy selected when a document capture exceeds browser canvas limits. */
+  oversizedDocumentStrategy?: OversizedDocumentCaptureStrategy;
+  /** Prunes capture-only subtrees in bounded snapshots while preserving their layout. */
+  capturePruneElement?: DomElementCapturePruner;
   /** Additional html2canvas-pro options used by the default provider. */
   captureOptions?: Partial<Html2CanvasOptions>;
   overlay?: BlurOverlayOptions;
@@ -359,10 +375,13 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
   private currentSource: BlurSource | undefined;
   private operationController: AbortController | undefined;
   private scrollFrame: number | undefined;
+  private scrollTimer: ReturnType<typeof setTimeout> | undefined;
   private refreshFrame: number | undefined;
   private queuedRefreshReason: Exclude<DomRefreshReason, "scroll"> = "manual";
   private scrollBusy = false;
   private scrollPending = false;
+  private lastScrollCaptureAt = Number.NEGATIVE_INFINITY;
+  private lastScrollEventAt = Number.NEGATIVE_INFINITY;
   private captureReleased = false;
 
   constructor(
@@ -426,6 +445,8 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
         captureRoot: this.captureRoot,
         scrollTarget: this.scrollTarget,
         strategy: options.captureStrategy ?? "document",
+        oversizedDocumentStrategy: options.oversizedDocumentStrategy,
+        pruneElement: options.capturePruneElement,
         html2canvasOptions: options.captureOptions,
       });
       this.defaultCaptureHandle = handle;
@@ -528,6 +549,7 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
   ): Promise<void> {
     this.ensureAlive();
     if (!this._renderer) return;
+    this.cancelScheduledScroll();
     cancelScheduledFrame(this.refreshFrame);
     this.refreshFrame = undefined;
     await this.update(reason, true);
@@ -613,9 +635,8 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
   destroy(): void {
     if (this._status.state === "destroyed") return;
     this.operationController?.abort();
-    cancelScheduledFrame(this.scrollFrame);
+    this.cancelScheduledScroll();
     cancelScheduledFrame(this.refreshFrame);
-    this.scrollFrame = undefined;
     this.refreshFrame = undefined;
     this.resizeObserver?.disconnect();
     this.themeObserver?.disconnect();
@@ -687,11 +708,20 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
       }
       this.prepareManagedMask();
       renderer.render();
-      if (reportStatus || this._status.state === "refreshing") {
+      if (reportStatus || this._status.state !== "ready") {
         this.setStatus({ state: "ready" });
       }
     } catch (error) {
       if (controller.signal.aborted) return;
+      if (
+        reason === "scroll" &&
+        this.currentSource !== undefined &&
+        renderer.status.state === "ready"
+      ) {
+        // A transient DOM snapshot failure must not hide the last rendered
+        // frame. A later successful scroll update will keep the effect ready.
+        return;
+      }
       this.setStatus({ state: "error", reason: toErrorMessage(error) });
       throw error;
     } finally {
@@ -702,16 +732,59 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
 
   private readonly handleScroll = (): void => {
     if (this._status.state === "destroyed" || !this._renderer) return;
+    this.lastScrollEventAt = Date.now();
+    this.scrollPending = true;
     if (this.scrollBusy) {
-      this.scrollPending = true;
       return;
     }
-    if (this.scrollFrame !== undefined) return;
+    this.scheduleScrollUpdate();
+  };
+
+  private scheduleScrollUpdate(): void {
+    if (
+      !this.scrollPending ||
+      this.scrollBusy ||
+      this.scrollFrame !== undefined ||
+      this.scrollTimer !== undefined ||
+      this._status.state === "destroyed" ||
+      !this._renderer
+    ) return;
+
+    const now = Date.now();
+    const isIdle = now - this.lastScrollEventAt >= SCROLL_IDLE_DELAY_MS;
+    const remaining = isIdle
+      ? 0
+      : Math.max(0, SCROLL_CAPTURE_INTERVAL_MS - (now - this.lastScrollCaptureAt));
+    if (remaining > 0) {
+      this.scrollTimer = setTimeout(() => {
+        this.scrollTimer = undefined;
+        this.scheduleScrollFrame();
+      }, remaining);
+      return;
+    }
+
+    this.scheduleScrollFrame();
+  }
+
+  private scheduleScrollFrame(): void {
+    if (this.scrollFrame !== undefined || !this.scrollPending) return;
     this.scrollFrame = scheduleFrame(() => {
       this.scrollFrame = undefined;
+      if (!this.scrollPending) return;
+      // The frame callback observes the latest scroll position, so events
+      // received before it runs are already coalesced into this capture.
+      this.scrollPending = false;
       void this.updateForScroll();
     });
-  };
+  }
+
+  private cancelScheduledScroll(): void {
+    cancelScheduledFrame(this.scrollFrame);
+    this.scrollFrame = undefined;
+    if (this.scrollTimer !== undefined) clearTimeout(this.scrollTimer);
+    this.scrollTimer = undefined;
+    this.scrollPending = false;
+  }
 
   private async updateForScroll(): Promise<void> {
     if (
@@ -727,9 +800,9 @@ class ProgressiveBlurElementController implements ProgressiveBlurEffect {
       // update() reports the actionable error through the status callback.
     } finally {
       this.scrollBusy = false;
+      this.lastScrollCaptureAt = Date.now();
       if (this.scrollPending) {
-        this.scrollPending = false;
-        this.handleScroll();
+        this.scheduleScrollUpdate();
       }
     }
   }

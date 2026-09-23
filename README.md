@@ -322,7 +322,9 @@ effect.render();
 
 `profile` 还支持 `'uniform'`、`'navbar'` 和 `{ type: 'mask', source: maskCanvas }`。默认捕获器使用 `html2canvas-pro` 捕获背景场景，排除目标元素，因而前景内容保持清晰；这与调试台将文字绘入源图的方式不同。它支持现代 CSS 颜色函数，适合包含 `color-mix()` 等样式的页面。
 
-默认滚动策略复用场景快照，内容变化可调用 `refresh()`。复杂页面可传入 `captureRoot`、`scrollTarget` 或自定义 `capture`。DOM 捕获并非浏览器原生的实时 backdrop 读取，跨域图片、视频、复杂 CSS 与动态内容需要在目标页面验证。
+默认滚动策略复用场景快照，内容变化可调用 `refresh()`。为避免超长页面超过浏览器 Canvas 尺寸或面积上限，整页快照超限时默认改为按视口捕获；设置 `oversizedDocumentStrategy: "region"` 后，改为只栅格化模糊目标区域。持续滚动时会合并采样请求，并最多每 120ms 捕获一次；滚动停止后会补采最新位置。异步截图按请求开始时的坐标裁剪，过期或越界的帧不会覆盖上一张有效样本，滚动期间的临时捕获失败也会保留当前模糊画面。复杂页面可传入 `captureRoot`、`scrollTarget` 或自定义 `capture`。DOM 捕获并非浏览器原生的实时 backdrop 读取，跨域图片、视频、复杂 CSS 与动态内容需要在目标页面验证。
+
+捕获时会保留模糊目标及其子元素的布局占位，仅在捕获副本中将目标整体透明化，避免 sticky 导航栏等元素被移除后造成背景错位。目标子树优先保留，不受 `captureOptions.ignoreElements` 过滤；其他元素继续遵循该过滤规则。超长页面进入区域捕获时，可通过 `capturePruneElement` 跳过目标区域外的内容子树；文档流内的子树会在捕获副本中由同尺寸占位块替代，`absolute` / `fixed` 子树则直接省略，以减少无关的 DOM 克隆。自定义 `onclone` 会先执行，再隐藏目标和恢复被裁剪子树的占位，不修改真实页面。
 
 详细类型见 [元素级 API](src/dom/element.ts)、[底层 DOM 适配器](src/dom/adapter.ts) 和 [捕获实现](src/dom/capture.ts)。
 

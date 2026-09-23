@@ -18,6 +18,7 @@ export type {
   BlurOverlayOptions,
   BlurProfile,
   DomElementCapture,
+  DomElementCapturePruner,
   DomElementCaptureRequest,
   NormalizedBlurOverlayBleed,
   ProgressiveBlurAttachOptions,
@@ -31,6 +32,7 @@ export { createDefaultDomCapture } from "./capture.js";
 export type {
   DefaultDomCaptureHandle,
   DefaultDomCaptureOptions,
+  OversizedDocumentCaptureStrategy,
 } from "./capture.js";
 
 export type {

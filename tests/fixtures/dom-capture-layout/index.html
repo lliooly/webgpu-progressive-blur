@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>DOM capture layout regression</title>
+<style>
+  body { margin: 0; background: white; }
+  #scene { width: 320px; }
+  #header { position: sticky; top: 0; height: 82px; background: lime; }
+  #header > div { height: 82px; visibility: visible; }
+  #stripes { height: 360px; background: linear-gradient(red 0 60px, blue 60px 180px, red 180px); }
+  #results { white-space: pre-wrap; }
+</style>
+<div id="scene"><header id="header"><div>Excluded header</div></header><main id="stripes"></main></div>
+<pre id="results">Running capture regression…</pre>
+<script type="module">
+  import html2canvas from 'html2canvas-pro';
+  import { createDefaultDomCapture } from '../../../src/dom/capture.ts';
+  const scene = document.querySelector('#scene');
+  const header = document.querySelector('#header');
+  const stripes = document.querySelector('#stripes');
+  const results = document.querySelector('#results');
+  const messages = [];
+  function assert(condition, message) {
+    if (!condition) throw new Error(message);
+    messages.push(`PASS ${message}`);
+    results.textContent = messages.join('\n');
+  }
+  function pixel(canvas, y) {
+    return [...canvas.getContext('2d').getImageData(10, y, 1, 1).data].slice(0, 3).join(',');
+  }
+  try {
+    const old = await html2canvas(scene, {
+      scale: 1, logging: false, ignoreElements: e => e === header,
+    });
+    assert(pixel(old, 90) === '0,0,255', 'Old exclusion reproduces shifted blue stripe at y=90');
+    for (const position of ['sticky', 'relative', 'fixed']) {
+      header.style.position = position;
+      for (const strategy of ['document', 'viewport']) {
+        const sourceTop = stripes.getBoundingClientRect().top;
+        const capture = createDefaultDomCapture({
+          element: header, captureRoot: scene, scrollTarget: window, strategy,
+          html2canvasOptions: {
+            backgroundColor: '#fff',
+            ignoreElements: e => e === header.firstElementChild,
+            onclone(doc) {
+              assert(doc.querySelector('#stripes').getBoundingClientRect().top === sourceTop,
+                `${position}/${strategy}: clone preserves content position`);
+              assert(doc.querySelector('#header').offsetHeight === 82,
+                `${position}/${strategy}: clone preserves header height`);
+            },
+          },
+        });
+        const output = document.createElement('canvas');
+        await capture.capture({
+          element: header, captureRoot: scene, rect: scene.getBoundingClientRect(),
+          width: 320, height: 180, pixelRatio: 1, output,
+          excludeElements: [], reason: 'initial', signal: new AbortController().signal,
+          scroll: { top: 0, max: 0, progress: 0 },
+        });
+        assert(pixel(output, position === 'fixed' ? 10 : 90) === '255,0,0',
+          `${position}/${strategy}: captured stripe is aligned`);
+        assert(pixel(output, 10) === (position === 'fixed' ? '255,0,0' : '255,255,255'),
+          `${position}/${strategy}: header and visible child do not leak into capture`);
+        assert(getComputedStyle(header).opacity === '1', `${position}/${strategy}: live header unchanged`);
+        capture.release();
+      }
+    }
+    header.style.position = 'sticky';
+    results.dataset.status = 'passed';
+  } catch (error) {
+    results.dataset.status = 'failed';
+    results.textContent += `\nFAIL ${error.stack}`;
+  }
+</script>
+</html>
