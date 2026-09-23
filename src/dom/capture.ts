@@ -193,28 +193,55 @@ function findClonedElement(
   clonedDocument: Document,
   ignored: ReadonlySet<Element>,
 ): HTMLElement | undefined {
+  const findByIdentity = (): HTMLElement | undefined => {
+    const id = element.id;
+    const classes = Array.from(element.classList);
+    const dataAttributes = Array.from(element.attributes).filter(
+      ({ name }) => name.startsWith('data-') && name !== 'data-html2canvas-ignore',
+    );
+    if (!id && classes.length === 0 && dataAttributes.length === 0) return undefined;
+
+    const matchesIdentity = (candidate: Element): boolean =>
+      (!id || candidate.id === id) &&
+      classes.every((className) => candidate.classList.contains(className)) &&
+      dataAttributes.every(({ name, value }) => candidate.getAttribute(name) === value);
+    const matches = Array.from(clonedDocument.getElementsByTagName(element.localName))
+      .filter(matchesIdentity);
+    return matches.length === 1 ? matches[0] as HTMLElement : undefined;
+  };
   const path: { tag: string; index: number }[] = [];
   let current: Element = element;
   while (current !== element.ownerDocument.documentElement) {
     const parent = current.parentElement;
-    if (!parent) return undefined;
+    if (!parent) return findByIdentity();
     const siblings = Array.from(parent.children).filter((sibling) =>
       sibling.localName === current.localName &&
       !ignored.has(sibling) &&
       !sibling.hasAttribute('data-html2canvas-ignore'),
     );
     const index = siblings.indexOf(current);
-    if (index < 0) return undefined;
+    if (index < 0) return findByIdentity();
     path.push({ tag: current.localName, index });
     current = parent;
   }
 
-  let clone: Element | undefined = clonedDocument.documentElement;
+  let clone: Element = clonedDocument.documentElement;
   for (const { tag, index } of path.reverse()) {
-    clone = Array.from(clone.children).filter((child) => child.localName === tag)[index];
-    if (!clone) return undefined;
+    const clonedParent: Element = clone;
+    const matchingChildren: Element[] = Array.from(clonedParent.children).filter(
+      (child: Element) => child.localName === tag,
+    );
+    const nextClone = matchingChildren[index];
+    if (!nextClone) return findByIdentity();
+    clone = nextClone;
   }
-  return clone as HTMLElement;
+  const mapped = clone as HTMLElement;
+  const identityMatches = (!element.id || mapped.id === element.id) &&
+    Array.from(element.classList).every((className) => mapped.classList.contains(className)) &&
+    Array.from(element.attributes)
+      .filter(({ name }) => name.startsWith('data-') && name !== 'data-html2canvas-ignore')
+      .every(({ name, value }) => mapped.getAttribute(name) === value);
+  return identityMatches ? mapped : findByIdentity();
 }
 
 const PLACEHOLDER_LAYOUT_PROPERTIES = [
@@ -534,7 +561,13 @@ class SharedDomCaptureSession {
         : 0;
     const captureWidth = regionTarget ? request.width : metrics.width;
     const captureHeight = regionTarget ? request.height : metrics.height;
-    const canvas = await html2canvas(this.captureRoot, {
+    // A scrolled <body> is only viewport-sized in getBoundingClientRect().
+    // Capture the document element for document-coordinate crops, otherwise
+    // html2canvas returns an empty slice once the requested y is below the body box.
+    const captureElement = documentRoot
+      ? this.captureRoot.ownerDocument.documentElement
+      : this.captureRoot;
+    const canvas = await html2canvas(captureElement, {
       ...this.html2canvasOptions,
       backgroundColor: this.html2canvasOptions.backgroundColor ?? null,
       logging: this.html2canvasOptions.logging ?? false,
@@ -566,7 +599,19 @@ class SharedDomCaptureSession {
         const clones = excludedElements.map((element) =>
           findClonedElement(element, document, ignoredElements),
         );
-        await customOnClone?.(document, root);
+        if (documentRoot && regionTarget) {
+          // The cloned body can remain a viewport-height scroll container. A
+          // document-coordinate crop below the first viewport would then be
+          // clipped even though the document element itself is being captured.
+          document.body.style.setProperty('height', 'auto', 'important');
+          document.body.style.setProperty('overflow', 'visible', 'important');
+          document.body.style.setProperty('overflow-x', 'visible', 'important');
+          document.body.style.setProperty('overflow-y', 'visible', 'important');
+        }
+        const customRoot = this.captureRoot === this.captureRoot.ownerDocument.body
+          ? document.body
+          : root;
+        await customOnClone?.(document, customRoot);
         restorePrunedLayout([...prunedElements], document, ignoredElements);
         for (const clone of clones) {
           // Opacity hides the complete subtree, even visibility:visible
